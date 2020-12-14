@@ -3,6 +3,6 @@ namespace Jellyfin.Plugin.AniDB
     public static class Constants
     {
         public const string PluginName = "Anime";
-        public const string PluginGuid = "a4df60c5-6ab4-412a-8f79-2cab93fb2bc5";
+        public const string PluginGuid = "a2b2a7ed-aa28-4521-a64a-63d86901f246";
     }
 }
