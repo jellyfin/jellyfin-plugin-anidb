@@ -1,6 +1,6 @@
 ﻿using MediaBrowser.Model.Plugins;
 
-namespace Jellyfin.Plugin.Anime.Configuration
+namespace Jellyfin.Plugin.AniDB.Configuration
 {
     public enum TitlePreferenceType
     {

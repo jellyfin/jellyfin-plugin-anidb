@@ -9,7 +9,7 @@ using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Providers;
 using Microsoft.Extensions.Logging;
 
-namespace Jellyfin.Plugin.Anime.Providers.AniDB.Metadata
+namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
 {
     public class AniDbMovieProvider : IRemoteMetadataProvider<Movie, MovieInfo>
     {

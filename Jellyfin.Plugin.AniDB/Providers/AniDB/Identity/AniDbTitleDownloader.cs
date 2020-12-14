@@ -4,11 +4,11 @@ using System.IO.Compression;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
-using Jellyfin.Plugin.Anime.Providers.AniDB.Metadata;
+using Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata;
 using MediaBrowser.Common.Configuration;
 using Microsoft.Extensions.Logging;
 
-namespace Jellyfin.Plugin.Anime.Providers.AniDB.Identity
+namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Identity
 {
     /// <summary>
     /// The AniDbTitleDownloader class downloads the anime titles file from AniDB and stores it.

@@ -1,6 +1,6 @@
 ﻿using System.Collections.Generic;
 
-namespace Jellyfin.Plugin.Anime
+namespace Jellyfin.Plugin.AniDB
 {
     public static class DictionaryExtensions
     {

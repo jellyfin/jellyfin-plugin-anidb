@@ -1,7 +1,7 @@
 ﻿using System.Threading;
 using System.Threading.Tasks;
 
-namespace Jellyfin.Plugin.Anime.Providers.AniDB.Identity
+namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Identity
 {
     /// <summary>
     /// The <see cref="IAniDbTitleDownloader"/> interface defines a type which can download anime titles and their AniDB IDs.

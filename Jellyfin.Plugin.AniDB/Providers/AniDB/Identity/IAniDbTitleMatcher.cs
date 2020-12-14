@@ -1,7 +1,7 @@
 ﻿using System.Threading;
 using System.Threading.Tasks;
 
-namespace Jellyfin.Plugin.Anime.Providers.AniDB.Identity
+namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Identity
 {
     /// <summary>
     /// The <see cref="IAniDbTitleMatcher"/> interface defines a type which can match series titles to AniDB IDs.

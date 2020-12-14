@@ -6,14 +6,14 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Xml;
-using Jellyfin.Plugin.Anime.Providers.AniDB.Converter;
+using Jellyfin.Plugin.AniDB.Providers.AniDB.Converter;
 using MediaBrowser.Common.Net;
 using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Providers;
 
-namespace Jellyfin.Plugin.Anime.Providers.AniDB.Metadata
+namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
 {
     /// <summary>
     /// The <see cref="AniDbEpisodeProvider" /> class provides episode metadata from AniDB.

@@ -9,7 +9,7 @@ using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Providers;
 
-namespace Jellyfin.Plugin.Anime.Providers.AniDB.Metadata
+namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
 {
     public class AniDbSeasonProvider : IRemoteMetadataProvider<Season, SeasonInfo>
     {

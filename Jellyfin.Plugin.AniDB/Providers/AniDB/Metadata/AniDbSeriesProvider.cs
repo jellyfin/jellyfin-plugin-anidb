@@ -13,8 +13,8 @@ using System.Xml.Linq;
 using System.Xml.Serialization;
 using System.Net.Http;
 using System.Net.Http.Headers;
-using Jellyfin.Plugin.Anime.Configuration;
-using Jellyfin.Plugin.Anime.Providers.AniDB.Identity;
+using Jellyfin.Plugin.AniDB.Configuration;
+using Jellyfin.Plugin.AniDB.Providers.AniDB.Identity;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Net;
 using MediaBrowser.Controller.Entities;
@@ -23,7 +23,7 @@ using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Providers;
 
-namespace Jellyfin.Plugin.Anime.Providers.AniDB.Metadata
+namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
 {
     public class AniDbSeriesProvider : IRemoteMetadataProvider<Series, SeriesInfo>, IHasOrder
     {
