@@ -1,5 +1,5 @@
 ---
-name: "Anime"
+name: "AniDB"
 guid: "a2b2a7ed-aa28-4521-a64a-63d86901f246"
 version: "11.0.0.0"
 targetAbi: "10.7.0.0"
