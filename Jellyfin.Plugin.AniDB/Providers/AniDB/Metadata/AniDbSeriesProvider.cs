@@ -771,7 +771,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
 
         private static async Task SaveEpsiodeXml(string seriesDataDirectory, string xml)
         {
-            var episodeNumber = await ParseEpisodeNumber(xml);
+            var episodeNumber = await ParseEpisodeNumber(xml).ConfigureAwait(false);
 
             if (episodeNumber != null)
             {
