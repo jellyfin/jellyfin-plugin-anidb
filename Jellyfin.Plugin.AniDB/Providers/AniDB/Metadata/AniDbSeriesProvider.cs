@@ -528,8 +528,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
 
             using (var response = await httpClient.GetAsync(url).ConfigureAwait(false))
             using (var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false))
-            using (var unzipped = new GZipStream(stream, CompressionMode.Decompress))
-            using (var reader = new StreamReader(unzipped, Encoding.UTF8, true))
+            using (var reader = new StreamReader(stream, Encoding.UTF8, true))
             using (var file = File.Open(seriesDataPath, FileMode.Create, FileAccess.Write))
             using (var writer = new StreamWriter(file))
             {
@@ -772,7 +771,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
 
         private static async Task SaveEpsiodeXml(string seriesDataDirectory, string xml)
         {
-            var episodeNumber = ParseEpisodeNumber(xml);
+            var episodeNumber = await ParseEpisodeNumber(xml);
 
             if (episodeNumber != null)
             {
