@@ -30,6 +30,7 @@ namespace Jellyfin.Plugin.AniDB.Configuration
         public PluginConfiguration()
         {
             TitlePreference = TitlePreferenceType.Localized;
+            TitleSimilarityThreshold = 50;
             MaxGenres = 5;
             TidyGenreList = true;
             TitleCaseGenres = false;
@@ -39,6 +40,8 @@ namespace Jellyfin.Plugin.AniDB.Configuration
         }
 
         public TitlePreferenceType TitlePreference { get; set; }
+
+        public int TitleSimilarityThreshold { get; set; }
 
         public int MaxGenres { get; set; }
 
