@@ -27,23 +27,19 @@ namespace Jellyfin.Plugin.AniDB.Providers
         /// <returns></returns>
         public static string ShortenString(string input, int minLenght = 0, int p = 50)
         {
-            decimal length = 0;
-            if ((int)((decimal)input.Length - (((decimal)input.Length / 100m) * (decimal)p)) > minLenght)
+            if (input.Length <= minLenght)
             {
-                length = (decimal)input.Length - (((decimal)input.Length / 100m) * (decimal)p);
+                return input;
             }
-            else
+
+            int newLength = (int)((float)input.Length - (((float)input.Length / 100f) * (float)p));
+
+            if (newLength < minLenght)
             {
-                if (input.Length < minLenght)
-                {
-                    length = input.Length;
-                }
-                else
-                {
-                    length = minLenght;
-                }
+                newLength = minLenght;
             }
-            return input.Substring(0, (int)length);
+
+            return input.Substring(0, newLength);
         }
 
         /// <summary>
@@ -95,8 +91,8 @@ namespace Jellyfin.Plugin.AniDB.Providers
         /// <summary>
         /// simple regex
         /// </summary>
-        /// <param name="input"></param>
         /// <param name="pattern"></param>
+        /// <param name="input"></param>
         /// <param name="group"></param>
         /// <param name="matchInt"></param>
         /// <returns></returns>
@@ -223,7 +219,7 @@ namespace Jellyfin.Plugin.AniDB.Providers
         }
 
         /// <summary>
-        /// get file Path from anidb xml file
+        /// Gets the path of the AniDB titles.xml file
         /// </summary>
         /// <returns></returns>
         private static string GetAnidbXml()

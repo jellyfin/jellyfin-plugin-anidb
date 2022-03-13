@@ -55,7 +55,6 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
 
         public async Task<MetadataResult<Series>> GetMetadata(SeriesInfo info, CancellationToken cancellationToken)
         {
-            var result = new MetadataResult<Series>();
             var animeId = info.ProviderIds.GetOrDefault(ProviderNames.AniDb);
 
             if (string.IsNullOrEmpty(animeId) && !string.IsNullOrEmpty(info.Name))
@@ -65,10 +64,10 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
 
             if (!string.IsNullOrEmpty(animeId))
             {
-                result = await GetMetadataForId(animeId, info, cancellationToken);
+                return await GetMetadataForId(animeId, info, cancellationToken);
             }
 
-            return result;
+            return new MetadataResult<Series>();
         }
 
         private async Task<MetadataResult<Series>> GetMetadataForId(string animeId, SeriesInfo info, CancellationToken cancellationToken)
