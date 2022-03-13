@@ -71,7 +71,7 @@ namespace Jellyfin.Plugin.AniDB.Providers
             a = Regex.Replace(a, @"\s", ".?.?.?");
 
             // other characters
-            a = Regex.Replace(a, @"[ 　!,–—_=~'`‚‘’„“”:;␣#@<>}\]\/\-]", ".?");
+            a = Regex.Replace(a, @"[!,–—_=~'`‚‘’„“”:;␣#@<>}\]\/\-]", ".?");
 
             // "words"
             a = Regex.Replace(a, @"s\b", ".?s");
