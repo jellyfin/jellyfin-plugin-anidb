@@ -225,12 +225,18 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
                             case "titles":
                                 using (var subtree = reader.ReadSubtree())
                                 {
-                                    var title = await ParseTitle(subtree, preferredMetadataLangauge).ConfigureAwait(false);
+                                    var (title, originalTitle) = await ParseTitle(subtree, preferredMetadataLangauge).ConfigureAwait(false);
                                     if (!string.IsNullOrEmpty(title))
                                     {
                                         series.Name = Plugin.Instance.Configuration.AniDbReplaceGraves
                                             ? title.Replace('`', '\'')
                                             : title;
+                                    }
+                                    if (!string.IsNullOrEmpty(originalTitle))
+                                    {
+                                        series.OriginalTitle = Plugin.Instance.Configuration.AniDbReplaceGraves
+                                            ? originalTitle.Replace('`', '\'')
+                                            : originalTitle;
                                     }
                                 }
 
@@ -474,7 +480,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             }
         }
 
-        private async Task<string> ParseTitle(XmlReader reader, string preferredMetadataLangauge)
+        private async Task<(string, string)> ParseTitle(XmlReader reader, string preferredMetadataLangauge)
         {
             var titles = new List<Title>();
 
@@ -495,7 +501,10 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
                 }
             }
 
-            return titles.Localize(Plugin.Instance.Configuration.TitlePreference, preferredMetadataLangauge).Name;
+            string title = titles.Localize(Plugin.Instance.Configuration.TitlePreference, preferredMetadataLangauge).Name;
+            string originalTitle = titles.Localize(Plugin.Instance.Configuration.OriginalTitlePreference, preferredMetadataLangauge).Name;
+
+            return (title, originalTitle);
         }
 
         private async Task ParseCreators(MetadataResult<Series> series, XmlReader reader)

@@ -1,4 +1,4 @@
-﻿using MediaBrowser.Model.Plugins;
+using MediaBrowser.Model.Plugins;
 
 namespace Jellyfin.Plugin.AniDB.Configuration
 {
@@ -30,6 +30,7 @@ namespace Jellyfin.Plugin.AniDB.Configuration
         public PluginConfiguration()
         {
             TitlePreference = TitlePreferenceType.Localized;
+            OriginalTitlePreference = TitlePreferenceType.JapaneseRomaji;
             TitleSimilarityThreshold = 50;
             MaxGenres = 5;
             TidyGenreList = true;
@@ -40,6 +41,8 @@ namespace Jellyfin.Plugin.AniDB.Configuration
         }
 
         public TitlePreferenceType TitlePreference { get; set; }
+
+        public TitlePreferenceType OriginalTitlePreference { get; set; }
 
         public int TitleSimilarityThreshold { get; set; }
 

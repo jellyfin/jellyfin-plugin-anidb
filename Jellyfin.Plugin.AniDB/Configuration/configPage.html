@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 
 <html lang="en" xmlns="http://www.w3.org/1999/xhtml">
 <head>
@@ -13,6 +13,14 @@
                         <div class="selectContainer">
                             <label class="selectLabel" for="titleLanguage">Title Language</label>
                             <select is="emby-select" id="titleLanguage" name="titleLanguage" class="emby-select-withcolor emby-select">
+                                <option id="optLanguageLocalized" value="Localized">Localized</option>
+                                <option id="optLanguageJapanese" value="Japanese">Japanese</option>
+                                <option id="optLanguageJapaneseRomaji" value="JapaneseRomaji">Romaji</option>
+                            </select>
+                        </div>
+                        <div class="selectContainer">
+                            <label class="selectLabel" for="originalTitleLanguage">Original Title Language</label>
+                            <select is="emby-select" id="originalTitleLanguage" name="originalTitleLanguage" class="emby-select-withcolor emby-select">
                                 <option id="optLanguageLocalized" value="Localized">Localized</option>
                                 <option id="optLanguageJapanese" value="Japanese">Japanese</option>
                                 <option id="optLanguageJapaneseRomaji" value="JapaneseRomaji">Romaji</option>
@@ -77,6 +85,7 @@
 
                         ApiClient.getPluginConfiguration(AniDBConfigurationPage.pluginUniqueId).then(function (config) {
                             document.getElementById('titleLanguage').value = config.TitlePreference;
+                            document.getElementById('originalTitleLanguage').value = config.OriginalTitlePreference;
                             document.getElementById('chkTitleSimilarityThreshold').value = config.TitleSimilarityThreshold;
                             document.getElementById('chkMaxGenres').value = config.MaxGenres;
                             document.getElementById('chkTitleCaseGenres').checked = config.TitleCaseGenres;
@@ -94,6 +103,7 @@
 
                         ApiClient.getPluginConfiguration(AniDBConfigurationPage.pluginUniqueId).then(function (config) {
                             config.TitlePreference = document.getElementById('titleLanguage').value;
+                            config.OriginalTitlePreference = document.getElementById('originalTitleLanguage').value;
                             config.TitleSimilarityThreshold = document.getElementById('chkTitleSimilarityThreshold').value;
                             config.MaxGenres = document.getElementById('chkMaxGenres').value;
                             config.TitleCaseGenres = document.getElementById('chkTitleCaseGenres').checked;
