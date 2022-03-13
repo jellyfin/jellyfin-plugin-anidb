@@ -43,6 +43,8 @@ namespace Jellyfin.Plugin.AniDB.Configuration
 
         public TitlePreferenceType OriginalTitlePreference { get; set; }
 
+        public bool IgnoreSeason { get; set; }
+
         public int MaxGenres { get; set; }
 
         public bool TidyGenreList { get; set; }

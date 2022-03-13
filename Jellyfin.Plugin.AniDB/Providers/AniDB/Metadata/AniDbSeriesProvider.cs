@@ -173,6 +173,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
                                     {
                                         date = date.ToUniversalTime();
                                         series.PremiereDate = date;
+                                        series.ProductionYear = date.Year;
                                     }
                                 }
 
@@ -221,9 +222,10 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
                                 break;
 
                             case "description":
-                                series.Overview = ReplaceLineFeedWithNewLine(
-                                    StripAniDbLinks(
-                                        await reader.ReadElementContentAsStringAsync().ConfigureAwait(false)));
+                                var description = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
+                                description = description.TrimStart('*').Trim();
+                                series.Overview = ReplaceLineFeedWithNewLine(StripAniDbLinks(
+                                    Plugin.Instance.Configuration.AniDbReplaceGraves ? description.Replace('`', '\'') : description));
 
                                 break;
 
@@ -492,7 +494,8 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
                     }
                     else
                     {
-                        series.AddPerson(CreatePerson(name, type));
+                        series.AddPerson(CreatePerson(
+                            Plugin.Instance.Configuration.AniDbReplaceGraves ? name.Replace('`', '\'') : name, type));
                     }
                 }
             }
