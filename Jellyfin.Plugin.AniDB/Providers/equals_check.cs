@@ -22,21 +22,21 @@ namespace Jellyfin.Plugin.AniDB.Providers
         /// Cut p(%) away from the string
         /// </summary>
         /// <param name="input"></param>
-        /// <param name="minLenght"></param>
+        /// <param name="minLength"></param>
         /// <param name="p"></param>
         /// <returns></returns>
-        public static string ShortenString(string input, int minLenght = 0, int p = 50)
+        public static string ShortenString(string input, int minLength = 0, int p = 50)
         {
-            if (input.Length <= minLenght)
+            if (input.Length <= minLength)
             {
                 return input;
             }
 
             int newLength = (int)((float)input.Length - (((float)input.Length / 100f) * (float)p));
 
-            if (newLength < minLenght)
+            if (newLength < minLength)
             {
-                newLength = minLenght;
+                newLength = minLength;
             }
 
             return input.Substring(0, newLength);
