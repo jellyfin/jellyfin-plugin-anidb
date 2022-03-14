@@ -199,7 +199,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
                                 break;
 
                             case "summary":
-                                var overview = AniDbSeriesProvider.ReplaceLineFeedWithNewLine(reader.ReadElementContentAsString());
+                                var overview = AniDbSeriesProvider.ReplaceNewLine(reader.ReadElementContentAsString());
                                 episode.Overview = Plugin.Instance.Configuration.AniDbReplaceGraves ? overview.Replace('`', '\'') : overview;
 
                                 break;

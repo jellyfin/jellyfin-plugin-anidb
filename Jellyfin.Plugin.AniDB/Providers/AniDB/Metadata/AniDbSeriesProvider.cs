@@ -224,7 +224,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
                             case "description":
                                 var description = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
                                 description = description.TrimStart('*').Trim();
-                                series.Overview = ReplaceLineFeedWithNewLine(StripAniDbLinks(
+                                series.Overview = ReplaceNewLine(StripAniDbLinks(
                                     Plugin.Instance.Configuration.AniDbReplaceGraves ? description.Replace('`', '\'') : description));
 
                                 break;
@@ -381,9 +381,9 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             return AniDbUrlRegex.Replace(text, "${name}");
         }
 
-        public static string ReplaceLineFeedWithNewLine(string text)
+        public static string ReplaceNewLine(string text)
         {
-            return text.Replace("\n", Environment.NewLine);
+            return text.Replace("\n", "<br>");
         }
 
         private async Task ParseActors(MetadataResult<Series> series, XmlReader reader)
