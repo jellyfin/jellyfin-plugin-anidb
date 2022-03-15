@@ -26,6 +26,13 @@
                                 <option id="optLanguageJapaneseRomaji" value="JapaneseRomaji">Romaji</option>
                             </select>
                         </div>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="chkIgnoreSeason" name="chkIgnoreSeason" type="checkbox" is="emby-checkbox" />
+                                <span>Ignore Season</span>
+                            </label>
+                            <div class="fieldDescription">AniDB doesn't support seasons. If checked, it will treat every season like season one, except for specials.</div>
+                        </div>
                         <div class="inputContainer">
                             <label class="inputeLabel inputLabelUnfocused" for="chkTitleSimilarityThreshold">Title Similarity Threshold</label>
                             <input id="chkTitleSimilarityThreshold" name="chkTitleSimilarityThreshold" type="number" is="emby-input" min="0" />
@@ -87,6 +94,7 @@
                             document.getElementById('titleLanguage').value = config.TitlePreference;
                             document.getElementById('originalTitleLanguage').value = config.OriginalTitlePreference;
                             document.getElementById('chkTitleSimilarityThreshold').value = config.TitleSimilarityThreshold;
+                            document.getElementById('chkIgnoreSeason').checked = config.IgnoreSeason;
                             document.getElementById('chkMaxGenres').value = config.MaxGenres;
                             document.getElementById('chkTitleCaseGenres').checked = config.TitleCaseGenres;
                             document.getElementById('chkTidyGenres').checked = config.TidyGenreList;
@@ -105,6 +113,7 @@
                             config.TitlePreference = document.getElementById('titleLanguage').value;
                             config.OriginalTitlePreference = document.getElementById('originalTitleLanguage').value;
                             config.TitleSimilarityThreshold = document.getElementById('chkTitleSimilarityThreshold').value;
+                            config.IgnoreSeason = document.getElementById('chkIgnoreSeason').checked;
                             config.MaxGenres = document.getElementById('chkMaxGenres').value;
                             config.TitleCaseGenres = document.getElementById('chkTitleCaseGenres').checked;
                             config.TidyGenreList = document.getElementById('chkTidyGenres').checked;
