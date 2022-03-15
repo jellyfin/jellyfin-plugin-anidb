@@ -46,8 +46,6 @@ namespace Jellyfin.Plugin.AniDB.Configuration
 
         public int TitleSimilarityThreshold { get; set; }
 
-        public bool IgnoreSeason { get; set; }
-
         public int MaxGenres { get; set; }
 
         public bool TidyGenreList { get; set; }

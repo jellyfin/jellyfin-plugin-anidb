@@ -6,6 +6,8 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Xml;
+using Jellyfin.Plugin.AniDB.Providers.AniDB.Converter;
+using MediaBrowser.Common.Net;
 using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Providers;
@@ -30,38 +32,30 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             _configurationManager = configurationManager;
         }
 
-        public string Name => "AniDB";
-
         public async Task<MetadataResult<Episode>> GetMetadata(EpisodeInfo info, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var result = new MetadataResult<Episode>();
 
-            var animeId = info.SeriesProviderIds.GetOrDefault(ProviderNames.AniDb);
-            if (string.IsNullOrEmpty(animeId))
+            var aniDbId = info.ProviderIds.GetOrDefault(ProviderNames.AniDb);
+            if (string.IsNullOrEmpty(aniDbId))
             {
                 return result;
             }
 
-            var seriesFolder = await FindSeriesFolder(animeId, cancellationToken);
+            var id = AniDbEpisodeIdentity.Parse(aniDbId);
+            if (id == null)
+            {
+                return result;
+            }
+
+            var seriesFolder = await FindSeriesFolder(id.Value.SeriesId, cancellationToken);
             if (string.IsNullOrEmpty(seriesFolder))
             {
                 return result;
             }
 
-            if (!Plugin.Instance.Configuration.IgnoreSeason && info.ParentIndexNumber > 1)
-            {
-                return result;
-            }
-
-            string episodeType = "";
-
-            if (info.ParentIndexNumber == 0)
-            {
-                episodeType = "S";
-            }
-
-            var xml = GetEpisodeXmlFile(info.IndexNumber, episodeType, seriesFolder);
+            var xml = GetEpisodeXmlFile(id.Value.EpisodeNumber, id.Value.EpisodeType, seriesFolder);
             if (xml == null || !xml.Exists)
             {
                 return result;
@@ -77,45 +71,140 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
 
             await ParseEpisodeXml(xml, result.Item, info.MetadataLanguage).ConfigureAwait(false);
 
+            if (id.Value.EpisodeNumberEnd != null && id.Value.EpisodeNumberEnd > id.Value.EpisodeNumber)
+            {
+                for (var i = id.Value.EpisodeNumber + 1; i <= id.Value.EpisodeNumberEnd; i++)
+                {
+                    var additionalXml = GetEpisodeXmlFile(i, id.Value.EpisodeType, seriesFolder);
+                    if (additionalXml == null || !additionalXml.Exists)
+                    {
+                        continue;
+                    }
+
+                    await ParseAdditionalEpisodeXml(additionalXml, result.Item, info.MetadataLanguage).ConfigureAwait(false);
+                }
+            }
+
             return result;
         }
 
+        public string Name => "AniDB";
+
         public async Task<IEnumerable<RemoteSearchResult>> GetSearchResults(EpisodeInfo searchInfo, CancellationToken cancellationToken)
         {
-            if (!searchInfo.IndexNumber.HasValue || !searchInfo.ParentIndexNumber.HasValue)
+            var list = new List<RemoteSearchResult>();
+
+            var id = AniDbEpisodeIdentity.Parse(searchInfo.ProviderIds.GetOrDefault(ProviderNames.AniDb));
+            if (id == null)
             {
-                return new List<RemoteSearchResult>();
+                return list;
             }
 
-            var metadataResult = await GetMetadata(searchInfo, cancellationToken).ConfigureAwait(false);
+            await AniDbSeriesProvider.GetSeriesData(
+                _configurationManager.ApplicationPaths,
+                id.Value.SeriesId,
+                cancellationToken).ConfigureAwait(false);
 
-            if (!metadataResult.HasMetadata)
+            try
             {
-                return new List<RemoteSearchResult>();
-            }
+                var metadataResult = await GetMetadata(searchInfo, cancellationToken).ConfigureAwait(false);
 
-            var item = metadataResult.Item;
-
-            return new[]
-            {
-                new RemoteSearchResult
+                if (metadataResult.HasMetadata)
                 {
-                    IndexNumber = item.IndexNumber,
-                    Name = item.Name,
-                    ParentIndexNumber = item.ParentIndexNumber,
-                    PremiereDate = item.PremiereDate,
-                    ProductionYear = item.ProductionYear,
-                    ProviderIds = item.ProviderIds,
-                    SearchProviderName = Name,
-                    IndexNumberEnd = item.IndexNumberEnd
+                    var item = metadataResult.Item;
+
+                    list.Add(new RemoteSearchResult
+                    {
+                        IndexNumber = item.IndexNumber,
+                        Name = item.Name,
+                        ParentIndexNumber = item.ParentIndexNumber,
+                        PremiereDate = item.PremiereDate,
+                        ProductionYear = item.ProductionYear,
+                        ProviderIds = item.ProviderIds,
+                        SearchProviderName = Name,
+                        IndexNumberEnd = item.IndexNumberEnd
+                    });
                 }
-            };
+            }
+            catch (FileNotFoundException)
+            {
+                // Don't fail the provider because this will just keep on going and going.
+            }
+            catch (DirectoryNotFoundException)
+            {
+                // Don't fail the provider because this will just keep on going and going.
+            }
+
+            return list;
         }
 
         public Task<HttpResponseMessage> GetImageResponse(string url, CancellationToken cancellationToken)
         {
             var imageProvider = new AniDbImageProvider(_configurationManager.ApplicationPaths);
             return imageProvider.GetImageResponse(url, cancellationToken);
+        }
+
+        private async Task ParseAdditionalEpisodeXml(FileInfo xml, Episode episode, string metadataLanguage)
+        {
+            var settings = new XmlReaderSettings
+            {
+                CheckCharacters = false,
+                IgnoreProcessingInstructions = true,
+                IgnoreComments = true,
+                ValidationType = ValidationType.None
+            };
+
+            using (var streamReader = xml.OpenText())
+            using (var reader = XmlReader.Create(streamReader, settings))
+            {
+                await reader.MoveToContentAsync().ConfigureAwait(false);
+
+                var titles = new List<Title>();
+
+                while (await reader.ReadAsync().ConfigureAwait(false))
+                {
+                    if (reader.NodeType == XmlNodeType.Element)
+                    {
+                        switch (reader.Name)
+                        {
+                            case "length":
+                                var length = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
+                                if (!string.IsNullOrEmpty(length))
+                                {
+                                    long duration;
+                                    if (long.TryParse(length, out duration))
+                                    {
+                                        episode.RunTimeTicks += TimeSpan.FromMinutes(duration).Ticks;
+                                    }
+                                }
+
+                                break;
+
+                            case "title":
+                                var language = reader.GetAttribute("xml:lang");
+                                var name = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
+
+                                titles.Add(new Title
+                                {
+                                    Language = language,
+                                    Type = "main",
+                                    Name = name
+                                });
+
+                                break;
+                        }
+                    }
+                }
+
+                var title = titles.Localize(Plugin.Instance.Configuration.TitlePreference, metadataLanguage).Name;
+                if (!string.IsNullOrEmpty(title))
+                {
+                    title = ", " + title;
+                    episode.Name += Plugin.Instance.Configuration.AniDbReplaceGraves
+                        ? title.Replace('`', '\'')
+                        : title;
+                }
+            }
         }
 
         private async Task<string> FindSeriesFolder(string seriesId, CancellationToken cancellationToken)
@@ -128,7 +217,6 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
         {
             var settings = new XmlReaderSettings
             {
-                Async = true,
                 CheckCharacters = false,
                 IgnoreProcessingInstructions = true,
                 IgnoreComments = true,
@@ -197,17 +285,11 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
                                 });
 
                                 break;
-
-                            case "summary":
-                                var overview = AniDbSeriesProvider.ReplaceNewLine(reader.ReadElementContentAsString());
-                                episode.Overview = Plugin.Instance.Configuration.AniDbReplaceGraves ? overview.Replace('`', '\'') : overview;
-
-                                break;
                         }
                     }
                 }
 
-                var title = titles.Localize(Configuration.TitlePreferenceType.Localized, preferredMetadataLanguage).Name;
+                var title = titles.Localize(Plugin.Instance.Configuration.TitlePreference, preferredMetadataLanguage).Name;
                 if (!string.IsNullOrEmpty(title))
                 {
                     episode.Name = Plugin.Instance.Configuration.AniDbReplaceGraves
