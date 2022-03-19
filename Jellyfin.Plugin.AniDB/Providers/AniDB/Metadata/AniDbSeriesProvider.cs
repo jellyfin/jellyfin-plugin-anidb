@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
-using System.IO.Compression;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -12,11 +11,9 @@ using System.Xml;
 using System.Xml.Linq;
 using System.Xml.Serialization;
 using System.Net.Http;
-using System.Net.Http.Headers;
 using Jellyfin.Plugin.AniDB.Configuration;
 using Jellyfin.Plugin.AniDB.Providers.AniDB.Identity;
 using MediaBrowser.Common.Configuration;
-using MediaBrowser.Common.Net;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Providers;
@@ -47,71 +44,108 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
         public AniDbSeriesProvider(IApplicationPaths appPaths)
         {
             _appPaths = appPaths;
-
             TitleMatcher = AniDbTitleMatcher.DefaultInstance;
-
             Current = this;
         }
 
         private static AniDbSeriesProvider Current { get; set; }
         private IAniDbTitleMatcher TitleMatcher { get; set; }
         public int Order => -1;
+        public string Name => "AniDB";
 
         public async Task<MetadataResult<Series>> GetMetadata(SeriesInfo info, CancellationToken cancellationToken)
         {
+            var animeId = info.ProviderIds.GetOrDefault(ProviderNames.AniDb);
+
+            if (string.IsNullOrEmpty(animeId) && !string.IsNullOrEmpty(info.Name))
+            {
+                animeId = await Equals_check.XmlFindId(info.Name, cancellationToken);
+            }
+
+            if (!string.IsNullOrEmpty(animeId))
+            {
+                return await GetMetadataForId(animeId, info, cancellationToken);
+            }
+
+            return new MetadataResult<Series>();
+        }
+
+        private async Task<MetadataResult<Series>> GetMetadataForId(string animeId, SeriesInfo info, CancellationToken cancellationToken)
+        {
             var result = new MetadataResult<Series>();
 
-            var aid = info.ProviderIds.GetOrDefault(ProviderNames.AniDb);
-            if (string.IsNullOrEmpty(aid) && !string.IsNullOrEmpty(info.Name))
-            {
-                aid = await Equals_check.Fast_xml_search(info.Name, info.Name, cancellationToken, true);
-                if (string.IsNullOrEmpty(aid))
-                {
-                    aid = await Equals_check.Fast_xml_search(await Equals_check.Clear_name(info.Name, cancellationToken), await Equals_check.Clear_name(info.Name, cancellationToken), cancellationToken, true);
-                }
-            }
+            result.Item = new Series();
+            result.HasMetadata = true;
 
-            if (!string.IsNullOrEmpty(aid))
-            {
-                result.Item = new Series();
-                result.HasMetadata = true;
+            result.Item.ProviderIds.Add(ProviderNames.AniDb, animeId);
 
-                result.Item.ProviderIds.Add(ProviderNames.AniDb, aid);
-
-                var seriesDataPath = await GetSeriesData(_appPaths, aid, cancellationToken);
-                await FetchSeriesInfo(result, seriesDataPath, info.MetadataLanguage ?? "en").ConfigureAwait(false);
-            }
+            var seriesDataPath = await GetSeriesData(_appPaths, animeId, cancellationToken);
+            await FetchSeriesInfo(result, seriesDataPath, info.MetadataLanguage ?? "en").ConfigureAwait(false);
 
             return result;
         }
 
-        public string Name => "AniDB";
-
         public async Task<IEnumerable<RemoteSearchResult>> GetSearchResults(SeriesInfo searchInfo, CancellationToken cancellationToken)
         {
-            var metadata = await GetMetadata(searchInfo, cancellationToken).ConfigureAwait(false);
+            var results = new List<RemoteSearchResult>();
+            var animeId = searchInfo.ProviderIds.GetOrDefault(ProviderNames.AniDb);
 
-            var list = new List<RemoteSearchResult>();
-
-            if (metadata.HasMetadata)
+            if (!string.IsNullOrEmpty(animeId))
             {
-                var seriesId = metadata.Item.ProviderIds.GetOrDefault(ProviderNames.AniDb);
-                var imageProvider = new AniDbImageProvider(_appPaths);
-                var images = await imageProvider.GetImages(seriesId, cancellationToken);
-                var res = new RemoteSearchResult
-                {
-                    Name = metadata.Item.Name,
-                    PremiereDate = metadata.Item.PremiereDate,
-                    ProductionYear = metadata.Item.ProductionYear,
-                    ImageUrl = images.Any() ? images.First().Url : null,
-                    ProviderIds = metadata.Item.ProviderIds,
-                    SearchProviderName = Name
-                };
+                var resultMetadata = await GetMetadataForId(animeId, searchInfo, cancellationToken);
 
-                list.Add(res);
+                if (resultMetadata.HasMetadata)
+                {
+                    var imageProvider = new AniDbImageProvider(_appPaths);
+                    var images = await imageProvider.GetImages(animeId, cancellationToken);
+                    results.Add(MetadataToRemoteSearchResult(resultMetadata, images));
+                }
             }
 
-            return list;
+            if (!string.IsNullOrEmpty(searchInfo.Name))
+            {
+                List<RemoteSearchResult> name_results = await GetSearchResultsByName(searchInfo.Name, searchInfo, cancellationToken).ConfigureAwait(false);
+
+                foreach (var media in name_results)
+                {
+                    results.Add(media);
+                }
+            }
+
+            return results;
+        }
+
+        public async Task<List<RemoteSearchResult>> GetSearchResultsByName(string name, SeriesInfo searchInfo, CancellationToken cancellationToken)
+        {
+            var imageProvider = new AniDbImageProvider(_appPaths);
+            var results = new List<RemoteSearchResult>();
+
+            List<string> ids = await Equals_check.XmlSearch(name, cancellationToken);
+
+            foreach (string id in ids)
+            {
+                var resultMetadata = await GetMetadataForId(id, searchInfo, cancellationToken);
+
+                if (resultMetadata.HasMetadata)
+                {
+                    var images = await imageProvider.GetImages(id, cancellationToken);
+                    results.Add(MetadataToRemoteSearchResult(resultMetadata, images));
+                }
+            }
+            return results;
+        }
+
+        public RemoteSearchResult MetadataToRemoteSearchResult(MetadataResult<Series> metadata, IEnumerable<RemoteImageInfo> images)
+        {
+            return new RemoteSearchResult
+            {
+                Name = metadata.Item.Name,
+                ProductionYear = metadata.Item.PremiereDate?.Year,
+                PremiereDate = metadata.Item.PremiereDate,
+                ImageUrl = images.Any() ? images.First().Url : null,
+                ProviderIds = metadata.Item.ProviderIds,
+                SearchProviderName = ProviderNames.AniDb
+            };
         }
 
         public async Task<HttpResponseMessage> GetImageResponse(string url, CancellationToken cancellationToken)
@@ -123,7 +157,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
 
         public static async Task<string> GetSeriesData(IApplicationPaths appPaths, string seriesId, CancellationToken cancellationToken)
         {
-            var dataPath = CalculateSeriesDataPath(appPaths, seriesId);
+            var dataPath = GetSeriesDataPath(appPaths, seriesId);
             var seriesDataPath = Path.Combine(dataPath, SeriesDataFile);
             var fileInfo = new FileInfo(seriesDataPath);
 
@@ -134,11 +168,6 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             }
 
             return seriesDataPath;
-        }
-
-        public static string CalculateSeriesDataPath(IApplicationPaths paths, string seriesId)
-        {
-            return Path.Combine(paths.CachePath, "anidb", "series", seriesId);
         }
 
         private async Task FetchSeriesInfo(MetadataResult<Series> result, string seriesDataPath, string preferredMetadataLangauge)
@@ -173,7 +202,6 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
                                     {
                                         date = date.ToUniversalTime();
                                         series.PremiereDate = date;
-                                        series.ProductionYear = date.Year;
                                     }
                                 }
 
@@ -222,10 +250,9 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
                                 break;
 
                             case "description":
-                                var description = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
-                                description = description.TrimStart('*').Trim();
-                                series.Overview = ReplaceNewLine(StripAniDbLinks(
-                                    Plugin.Instance.Configuration.AniDbReplaceGraves ? description.Replace('`', '\'') : description));
+                                series.Overview = ReplaceLineFeedWithNewLine(
+                                    StripAniDbLinks(
+                                        await reader.ReadElementContentAsStringAsync().ConfigureAwait(false)));
 
                                 break;
 
@@ -381,9 +408,9 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             return AniDbUrlRegex.Replace(text, "${name}");
         }
 
-        public static string ReplaceNewLine(string text)
+        public static string ReplaceLineFeedWithNewLine(string text)
         {
-            return text.Replace("\n", "<br>");
+            return text.Replace("\n", Environment.NewLine);
         }
 
         private async Task ParseActors(MetadataResult<Series> series, XmlReader reader)
@@ -494,14 +521,14 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
                     }
                     else
                     {
-                        series.AddPerson(CreatePerson(
-                            Plugin.Instance.Configuration.AniDbReplaceGraves ? name.Replace('`', '\'') : name, type));
+                        series.AddPerson(CreatePerson(name, type));
                     }
                 }
             }
         }
 
-        private PersonInfo CreatePerson(string name, string type, string role = null) {
+        private PersonInfo CreatePerson(string name, string type, string role = null)
+        {
             // todo find nationality of person and conditionally reverse name order
 
             if (!_typeMappings.TryGetValue(type, out string mappedType))
@@ -841,23 +868,9 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
         /// <param name="appPaths">The app paths.</param>
         /// <param name="seriesId">The series id.</param>
         /// <returns>System.String.</returns>
-        internal static string GetSeriesDataPath(IApplicationPaths appPaths, string seriesId)
+        public static string GetSeriesDataPath(IApplicationPaths appPaths, string seriesId)
         {
-            var seriesDataPath = Path.Combine(GetSeriesDataPath(appPaths), seriesId);
-
-            return seriesDataPath;
-        }
-
-        /// <summary>
-        /// Gets the series data path.
-        /// </summary>
-        /// <param name="appPaths">The app paths.</param>
-        /// <returns>System.String.</returns>
-        internal static string GetSeriesDataPath(IApplicationPaths appPaths)
-        {
-            var dataPath = Path.Combine(appPaths.CachePath, "anidb\\series");
-
-            return dataPath;
+            return Path.Combine(appPaths.CachePath, "anidb", "series", seriesId);
         }
 
         private struct GenreInfo
@@ -910,31 +923,6 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             return titlesList.FirstOrDefault(t => t.Language == "x-jat" && t.Type == "main") ??
                    titlesList.FirstOrDefault(t => t.Type == "main") ??
                    titlesList.FirstOrDefault();
-        }
-
-        /// <summary>
-        /// Gets the series data path.
-        /// </summary>
-        /// <param name="appPaths">The app paths.</param>
-        /// <param name="seriesId">The series id.</param>
-        /// <returns>System.String.</returns>
-        internal static string GetSeriesDataPath(IApplicationPaths appPaths, string seriesId)
-        {
-            var seriesDataPath = Path.Combine(GetSeriesDataPath(appPaths), seriesId);
-
-            return seriesDataPath;
-        }
-
-        /// <summary>
-        /// Gets the series data path.
-        /// </summary>
-        /// <param name="appPaths">The app paths.</param>
-        /// <returns>System.String.</returns>
-        internal static string GetSeriesDataPath(IApplicationPaths appPaths)
-        {
-            var dataPath = Path.Combine(appPaths.CachePath, "tvdb");
-
-            return dataPath;
         }
     }
 }

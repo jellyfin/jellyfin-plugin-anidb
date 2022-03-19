@@ -31,6 +31,7 @@ namespace Jellyfin.Plugin.AniDB.Configuration
         {
             TitlePreference = TitlePreferenceType.Localized;
             OriginalTitlePreference = TitlePreferenceType.JapaneseRomaji;
+            TitleSimilarityThreshold = 50;
             MaxGenres = 5;
             TidyGenreList = true;
             TitleCaseGenres = false;
@@ -43,7 +44,7 @@ namespace Jellyfin.Plugin.AniDB.Configuration
 
         public TitlePreferenceType OriginalTitlePreference { get; set; }
 
-        public bool IgnoreSeason { get; set; }
+        public int TitleSimilarityThreshold { get; set; }
 
         public int MaxGenres { get; set; }
 
