@@ -12,6 +12,10 @@ namespace Jellyfin.Plugin.AniDB.Providers
     internal class Equals_check
     {
         public readonly ILogger<Equals_check> _logger;
+        private static readonly Regex _whitespaceRegex = new(@"\s", RegexOptions.Compiled);
+        private static readonly Regex _specialCharacterRegex = new(@"[!,–—_=~'`‚‘’„“”:;␣#@<>}\]\/\-]", RegexOptions.Compiled);
+        private static readonly Regex _sAtEndBoundaryRegex = new(@"s\b", RegexOptions.Compiled);
+        private static readonly Regex _titleRegex = new(@"<title.*>([^<]+)</title>", RegexOptions.Compiled);
 
         public Equals_check(ILogger<Equals_check> logger)
         {
@@ -32,7 +36,7 @@ namespace Jellyfin.Plugin.AniDB.Providers
                 return input;
             }
 
-            int newLength = (int)((float)input.Length - (((float)input.Length / 100f) * (float)p));
+            int newLength = (int)(input.Length - ((input.Length / 100f) * p));
 
             if (newLength < minLength)
             {
@@ -68,13 +72,13 @@ namespace Jellyfin.Plugin.AniDB.Providers
 
             // whitespace
             a = a.Replace(@"\ ", ".?.?.?");
-            a = Regex.Replace(a, @"\s", ".?.?.?");
+            a = _whitespaceRegex.Replace(a, ".?.?.?");
 
             // other characters
-            a = Regex.Replace(a, @"[!,–—_=~'`‚‘’„“”:;␣#@<>}\]\/\-]", ".?");
+            a = _specialCharacterRegex.Replace(a, ".?");
 
             // "words"
-            a = Regex.Replace(a, @"s\b", ".?s");
+            a = _sAtEndBoundaryRegex.Replace(a, ".?s");
             a = a.Replace("c", "(c|k)", StringComparison.OrdinalIgnoreCase);
             a = a.Replace("k", "(c|k)", StringComparison.OrdinalIgnoreCase);
             a = a.Replace("&", "(&|(and))", StringComparison.OrdinalIgnoreCase);
@@ -91,19 +95,19 @@ namespace Jellyfin.Plugin.AniDB.Providers
         /// <summary>
         /// simple regex
         /// </summary>
-        /// <param name="pattern"></param>
+        /// <param name="regex"></param>
         /// <param name="input"></param>
         /// <param name="group"></param>
         /// <param name="matchInt"></param>
         /// <returns></returns>
-        public async static Task<string> OneLineRegex(string pattern, string input, CancellationToken cancellationToken, int group = 1, int matchInt = 0)
+        public static string OneLineRegex(Regex regex, string input, int group = 1, int matchInt = 0)
         {
             int x = 0;
-            foreach (Match match in Regex.Matches(input, pattern, RegexOptions.IgnoreCase))
+            foreach (Match match in regex.Matches(input))
             {
                 if (x == matchInt)
                 {
-                    return await Task.Run(() => match.Groups[group].Value, cancellationToken);
+                    return match.Groups[group].Value;
                 }
                 x++;
             }
@@ -124,7 +128,7 @@ namespace Jellyfin.Plugin.AniDB.Providers
                 int x = 0;
                 while (!string.IsNullOrEmpty(s))
                 {
-                    s = await OneLineRegex(@"<anime aid=""(\d+)"">(?>[^<>]+|<(?!\/anime>)[^<>]*>)*?.*" + await Task.Run(() => FuzzyRegexEscape(ShortenString(name, 6, 20)), cancellationToken), xml, cancellationToken, 1, x);
+                    s = OneLineRegex(new Regex(@"<anime aid=""(\d+)"">(?>[^<>]+|<(?!\/anime>)[^<>]*>)*?.*" + FuzzyRegexEscape(ShortenString(name, 6, 20)), RegexOptions.IgnoreCase | RegexOptions.Compiled), xml, 1, x);
                     if (s != "")
                     {
                         results.Add(s);
@@ -161,7 +165,7 @@ namespace Jellyfin.Plugin.AniDB.Providers
             string currentId = "";
             foreach (string id in results)
             {
-                string nameXmlFromId = await OneLineRegex(@"<anime aid=""" + id + @"""((?s).*?)<\/anime>", xml, cancellationToken);
+                string nameXmlFromId = OneLineRegex(new Regex(@"<anime aid=""" + id + @"""((?s).*?)<\/anime>", RegexOptions.Compiled), xml);
 
                 string[] lines = nameXmlFromId.Split(
                     new string[] { "\r\n", "\r", "\n" },
@@ -170,7 +174,7 @@ namespace Jellyfin.Plugin.AniDB.Providers
 
                 foreach (string line in lines)
                 {
-                    string nameFromId = await OneLineRegex(@"<title.*>([^<]+)</title>", line, cancellationToken);
+                    string nameFromId = OneLineRegex(_titleRegex, line);
 
                     if (!String.IsNullOrEmpty(nameFromId))
                     {
