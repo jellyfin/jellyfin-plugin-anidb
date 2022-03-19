@@ -250,9 +250,10 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
                                 break;
 
                             case "description":
-                                series.Overview = ReplaceLineFeedWithNewLine(
-                                    StripAniDbLinks(
-                                        await reader.ReadElementContentAsStringAsync().ConfigureAwait(false)));
+                                var description = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
+                                description = description.TrimStart('*').Trim();
+                                series.Overview = ReplaceNewLine(StripAniDbLinks(
+                                    Plugin.Instance.Configuration.AniDbReplaceGraves ? description.Replace('`', '\'') : description));
 
                                 break;
 
@@ -408,9 +409,9 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             return AniDbUrlRegex.Replace(text, "${name}");
         }
 
-        public static string ReplaceLineFeedWithNewLine(string text)
+        public static string ReplaceNewLine(string text)
         {
-            return text.Replace("\n", Environment.NewLine);
+            return text.Replace("\n", "<br>");
         }
 
         private async Task ParseActors(MetadataResult<Series> series, XmlReader reader)
@@ -454,7 +455,9 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
 
             if (!string.IsNullOrEmpty(name) && !string.IsNullOrEmpty(role)) // && series.People.All(p => p.Name != name))
             {
-                series.AddPerson(CreatePerson(name, PersonType.Actor, role));
+                series.AddPerson(CreatePerson(
+                    Plugin.Instance.Configuration.AniDbReplaceGraves ? name.Replace('`', '\'') : name,
+                    PersonType.Actor, role));
             }
         }
 
@@ -521,7 +524,8 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
                     }
                     else
                     {
-                        series.AddPerson(CreatePerson(name, type));
+                        series.AddPerson(CreatePerson(
+                           Plugin.Instance.Configuration.AniDbReplaceGraves ? name.Replace('`', '\'') : name, type));
                     }
                 }
             }
