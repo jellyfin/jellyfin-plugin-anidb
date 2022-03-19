@@ -126,9 +126,10 @@ namespace Jellyfin.Plugin.AniDB.Providers
                 string xml = File.ReadAllText(GetAnidbXml());
                 string s = "-";
                 int x = 0;
+                Regex searchRegex = new Regex(@"<anime aid=""([0-9]+)"">(?>[^<>]+|<(?!\/anime>)[^<>]*>)*?.*" + FuzzyRegexEscape(ShortenString(name, 6, 20)), RegexOptions.IgnoreCase | RegexOptions.Compiled);
                 while (!string.IsNullOrEmpty(s))
                 {
-                    s = OneLineRegex(new Regex(@"<anime aid=""(\d+)"">(?>[^<>]+|<(?!\/anime>)[^<>]*>)*?.*" + FuzzyRegexEscape(ShortenString(name, 6, 20)), RegexOptions.IgnoreCase | RegexOptions.Compiled), xml, 1, x);
+                    s = OneLineRegex(searchRegex, xml, 1, x);
                     if (s != "")
                     {
                         results.Add(s);
@@ -163,6 +164,7 @@ namespace Jellyfin.Plugin.AniDB.Providers
             string xml = File.ReadAllText(GetAnidbXml());
             int lowestDistance = Plugin.Instance.Configuration.TitleSimilarityThreshold;
             string currentId = "";
+            
             foreach (string id in results)
             {
                 string nameXmlFromId = OneLineRegex(new Regex(@"<anime aid=""" + id + @"""((?s).*?)<\/anime>", RegexOptions.Compiled), xml);
