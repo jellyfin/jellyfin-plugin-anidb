@@ -31,7 +31,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
         // AniDB has very low request rate limits, a minimum of 2 seconds between requests, and an average of 4 seconds between requests
         public static readonly RateLimiter RequestLimiter = new RateLimiter(TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(5), TimeSpan.FromMinutes(5));
         private static readonly int[] IgnoredTagIds = { 6, 22, 23, 60, 128, 129, 185, 216, 242, 255, 268, 269, 289 };
-        private static readonly Regex AniDbUrlRegex = new Regex(@"https?://anidb.net/\w+ \[(?<name>[^\]]*)\]");
+        private static readonly Regex AniDbUrlRegex = new Regex(@"https?://anidb.net/\w+(/[0-9]+)? \[(?<name>[^\]]*)\]", RegexOptions.Compiled);
         private readonly IApplicationPaths _appPaths;
 
         private readonly Dictionary<string, string> _typeMappings = new Dictionary<string, string>
@@ -250,9 +250,10 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
                                 break;
 
                             case "description":
-                                series.Overview = ReplaceLineFeedWithNewLine(
-                                    StripAniDbLinks(
-                                        await reader.ReadElementContentAsStringAsync().ConfigureAwait(false)));
+                                var description = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
+                                description = description.TrimStart('*').Trim();
+                                series.Overview = ReplaceNewLine(StripAniDbLinks(
+                                    Plugin.Instance.Configuration.AniDbReplaceGraves ? description.Replace('`', '\'') : description));
 
                                 break;
 
@@ -408,9 +409,9 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             return AniDbUrlRegex.Replace(text, "${name}");
         }
 
-        public static string ReplaceLineFeedWithNewLine(string text)
+        public static string ReplaceNewLine(string text)
         {
-            return text.Replace("\n", Environment.NewLine);
+            return text.Replace("\n", "<br>");
         }
 
         private async Task ParseActors(MetadataResult<Series> series, XmlReader reader)
@@ -454,7 +455,9 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
 
             if (!string.IsNullOrEmpty(name) && !string.IsNullOrEmpty(role)) // && series.People.All(p => p.Name != name))
             {
-                series.AddPerson(CreatePerson(name, PersonType.Actor, role));
+                series.AddPerson(CreatePerson(
+                    Plugin.Instance.Configuration.AniDbReplaceGraves ? name.Replace('`', '\'') : name,
+                    PersonType.Actor, role));
             }
         }
 
@@ -521,7 +524,8 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
                     }
                     else
                     {
-                        series.AddPerson(CreatePerson(name, type));
+                        series.AddPerson(CreatePerson(
+                           Plugin.Instance.Configuration.AniDbReplaceGraves ? name.Replace('`', '\'') : name, type));
                     }
                 }
             }
