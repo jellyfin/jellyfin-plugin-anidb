@@ -104,7 +104,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Identity
         internal static string GetComparableName(string name)
         {
             name = name.ToLowerInvariant();
-            name = name.Normalize(NormalizationForm.FormKD);
+            name = name.Normalize(NormalizationForm.FormC);
             var sb = new StringBuilder();
             foreach (var c in name)
             {
