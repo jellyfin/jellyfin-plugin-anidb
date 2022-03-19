@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Net.Http;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Xml;
@@ -54,7 +55,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
                 return result;
             }
 
-            string episodeType = "";
+            string episodeType = string.Empty;
 
             if (info.ParentIndexNumber == 0)
             {
@@ -84,14 +85,14 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
         {
             if (!searchInfo.IndexNumber.HasValue || !searchInfo.ParentIndexNumber.HasValue)
             {
-                return new List<RemoteSearchResult>();
+                return Enumerable.Empty<RemoteSearchResult>();
             }
 
             var metadataResult = await GetMetadata(searchInfo, cancellationToken).ConfigureAwait(false);
 
             if (!metadataResult.HasMetadata)
             {
-                return new List<RemoteSearchResult>();
+                return Enumerable.Empty<RemoteSearchResult>();
             }
 
             var item = metadataResult.Item;

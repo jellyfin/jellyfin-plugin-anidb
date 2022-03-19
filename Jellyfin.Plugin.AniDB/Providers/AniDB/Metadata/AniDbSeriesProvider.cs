@@ -34,7 +34,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
         // AniDB has very low request rate limits, a minimum of 2 seconds between requests, and an average of 4 seconds between requests
         public static readonly RateLimiter RequestLimiter = new RateLimiter(TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(5), TimeSpan.FromMinutes(5));
         private static readonly int[] IgnoredTagIds = { 6, 22, 23, 60, 128, 129, 185, 216, 242, 255, 268, 269, 289 };
-        private static readonly Regex AniDbUrlRegex = new Regex(@"https?://anidb.net/\w+(/\d+)? \[(?<name>[^\]]*)\]");
+        private static readonly Regex AniDbUrlRegex = new Regex(@"https?://anidb.net/\w+(/[0-9]+)? \[(?<name>[^\]]*)\]", RegexOptions.Compiled);
         private readonly IApplicationPaths _appPaths;
 
         private readonly Dictionary<string, string> _typeMappings = new Dictionary<string, string>
