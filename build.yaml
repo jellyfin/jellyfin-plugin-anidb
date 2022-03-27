@@ -12,5 +12,23 @@ description: >
 category: "Metadata"
 artifacts:
   - "Jellyfin.Plugin.AniDB.dll"
-changelog: |2-
-  
+changelog: |-
+  - Fix episode metadata & improve series metadata (#29) @Nalsai
+
+  ### New features and improvements ###
+  - Add original title metadata (#26) @Nalsai
+
+  ### Bug Fixes ###
+  - Use proper normalization form (#19) @crobibero
+  - Improve AniDB ID searching and matching (#27) @Nalsai
+
+  ### Code or Repo Maintenance ###
+  - chore(deps): bump Microsoft.Extensions.Http from 5.0.0 to 6.0.0 (#15) @dependabot
+  - Improve AniDB ID searching and matching (#27) @Nalsai
+  - Use meta ci (#30) @crobibero
+
+  ### Dependency updates ###
+  - chore(deps): bump Microsoft.Extensions.Http from 5.0.0 to 6.0.0 (#15) @dependabot
+
+  ### CI & build changes ###
+  - Use meta ci (#30) @crobibero
