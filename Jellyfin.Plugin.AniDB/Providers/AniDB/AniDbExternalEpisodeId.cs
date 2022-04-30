@@ -1,15 +1,14 @@
 ﻿using MediaBrowser.Controller.Entities.TV;
-using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Providers;
 
 namespace Jellyfin.Plugin.AniDB.Providers.AniDB
 {
-    public class AniDbExternalId : IExternalId
+    public class AniDbExternalEpisodeId : IExternalId
     {
         public bool Supports(IHasProviderIds item)
-            => item is Series || item is Movie;
+            => item is Episode;
 
         public string ProviderName
             => "AniDB";
@@ -21,6 +20,6 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB
             => null;
 
         public string UrlFormatString
-            => "https://anidb.net/anime/{0}";
+            => "https://anidb.net/episode/{0}";
     }
 }

@@ -139,8 +139,6 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             using (var streamReader = xml.OpenText())
             using (var reader = XmlReader.Create(streamReader, settings))
             {
-                await reader.MoveToContentAsync().ConfigureAwait(false);
-
                 var titles = new List<Title>();
 
                 while (await reader.ReadAsync().ConfigureAwait(false))
@@ -149,6 +147,15 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
                     {
                         switch (reader.Name)
                         {
+                            case "episode":
+                                var episodeId = reader.GetAttribute("id");
+                                if (!string.IsNullOrEmpty(episodeId))
+                                {
+                                    episode.ProviderIds.Add(ProviderNames.AniDb, episodeId);
+                                }
+
+                                break;
+
                             case "length":
                                 var length = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
                                 if (!string.IsNullOrEmpty(length))
