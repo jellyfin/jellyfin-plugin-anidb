@@ -79,10 +79,10 @@ namespace Jellyfin.Plugin.AniDB.Providers
 
             // "words"
             a = _sAtEndBoundaryRegex.Replace(a, ".?s");
-            a = a.Replace("re", "re.?", StringComparison.OrdinalIgnoreCase);
             a = a.Replace("Gekijyouban", "Gekijouban", StringComparison.OrdinalIgnoreCase);
             a = a.Replace("Mahoutsukai", "Mahou ?tsukai", StringComparison.OrdinalIgnoreCase);
             a = a.Replace("to aru", "to ?aru", StringComparison.OrdinalIgnoreCase);
+            a = a.Replace("re", "re.?", StringComparison.OrdinalIgnoreCase);
             a = a.Replace("OVA", "((OVA)|(OAD))", StringComparison.OrdinalIgnoreCase);
             a = a.Replace("OAD", "((OVA)|(OAD))", StringComparison.OrdinalIgnoreCase);
             a = a.Replace("c", "(c|k)", StringComparison.OrdinalIgnoreCase);
