@@ -21,6 +21,24 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB
             => null;
 
         public string UrlFormatString
-            => "https://anidb.net/perl-bin/animedb.pl?show=anime&aid={0}";
+            => "https://anidb.net/anime/{0}";
+    }
+
+    public class AniDbExternalEpisodeId : IExternalId
+    {
+        public bool Supports(IHasProviderIds item)
+            => item is Episode;
+
+        public string ProviderName
+            => "AniDB";
+
+        public string Key
+            => ProviderNames.AniDb;
+
+        public ExternalIdMediaType? Type
+            => null;
+
+        public string UrlFormatString
+            => "https://anidb.net/episode/{0}";
     }
 }
