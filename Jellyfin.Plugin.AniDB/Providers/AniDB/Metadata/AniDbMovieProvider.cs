@@ -3,7 +3,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Net.Http;
 using MediaBrowser.Common.Configuration;
-using MediaBrowser.Common.Net;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Providers;
@@ -26,59 +25,55 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
 
         public async Task<MetadataResult<Movie>> GetMetadata(MovieInfo info, CancellationToken cancellationToken)
         {
-            // Empty result
-            var result = new MetadataResult<Movie>
-            {
-                HasMetadata = false,
-                Item = new Movie
-                {
-                    Name = info.Name
-                }
-            };
-
-            var seriesId = info.ProviderIds.GetOrDefault(ProviderNames.AniDb);
-            if (seriesId == null)
-            {
-                return result;
-            }
+            var animeId = info.ProviderIds.GetOrDefault(ProviderNames.AniDb);
 
             var seriesInfo = new SeriesInfo();
-            seriesInfo.ProviderIds.Add(ProviderNames.AniDb, seriesId);
+            seriesInfo.ProviderIds.Add(ProviderNames.AniDb, animeId);
 
-            var seriesResult = await _seriesProvider.GetMetadata(seriesInfo, cancellationToken);
-            if (seriesResult.HasMetadata)
+            if (string.IsNullOrEmpty(animeId) && !string.IsNullOrEmpty(info.Name))
             {
-                result = new MetadataResult<Movie>
-                {
-                    HasMetadata = true,
-                    Item = new Movie
-                    {
-                        Name = seriesResult.Item.Name,
-                        Overview = seriesResult.Item.Overview,
-                        PremiereDate = seriesResult.Item.PremiereDate,
-                        ProductionYear = seriesResult.Item.ProductionYear,
-                        EndDate = seriesResult.Item.EndDate,
-                        CommunityRating = seriesResult.Item.CommunityRating,
-                        Studios = seriesResult.Item.Studios,
-                        Genres = seriesResult.Item.Genres,
-                        ProviderIds = seriesResult.Item.ProviderIds,
-                    },
-                    People = seriesResult.People,
-                    Images = seriesResult.Images
-                };
+                animeId = await Equals_check.XmlFindId(info.Name, cancellationToken);
             }
 
-            return result;
+            if (!string.IsNullOrEmpty(animeId))
+            {
+                var seriesResult = await _seriesProvider.GetMetadataForId(animeId, seriesInfo, cancellationToken);
+
+                if (seriesResult.HasMetadata)
+                {
+                    return new MetadataResult<Movie>
+                    {
+                        HasMetadata = true,
+                        Item = new Movie
+                        {
+                            Name = seriesResult.Item.Name,
+                            OriginalTitle = seriesResult.Item.OriginalTitle,
+                            Overview = seriesResult.Item.Overview,
+                            PremiereDate = seriesResult.Item.PremiereDate,
+                            ProductionYear = seriesResult.Item.ProductionYear,
+                            EndDate = seriesResult.Item.EndDate,
+                            CommunityRating = seriesResult.Item.CommunityRating,
+                            Studios = seriesResult.Item.Studios,
+                            Genres = seriesResult.Item.Genres,
+                            ProviderIds = seriesResult.Item.ProviderIds
+                        },
+                        People = seriesResult.People,
+                        Images = seriesResult.Images
+                    };
+                }
+            }
+
+            return new MetadataResult<Movie>();
         }
 
         public async Task<IEnumerable<RemoteSearchResult>> GetSearchResults(MovieInfo searchInfo, CancellationToken cancellationToken)
         {
             var seriesInfo = new SeriesInfo();
-            var seriesId = searchInfo.ProviderIds.GetOrDefault(ProviderNames.AniDb);
+            var animeId = searchInfo.ProviderIds.GetOrDefault(ProviderNames.AniDb);
 
-            if (seriesId != null)
+            if (animeId != null)
             {
-                seriesInfo.ProviderIds.Add(ProviderNames.AniDb, seriesId);
+                seriesInfo.ProviderIds.Add(ProviderNames.AniDb, animeId);
             }
 
             seriesInfo.Name = searchInfo.Name;

@@ -70,7 +70,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             return new MetadataResult<Series>();
         }
 
-        private async Task<MetadataResult<Series>> GetMetadataForId(string animeId, SeriesInfo info, CancellationToken cancellationToken)
+        public async Task<MetadataResult<Series>> GetMetadataForId(string animeId, SeriesInfo info, CancellationToken cancellationToken)
         {
             var result = new MetadataResult<Series>();
 
