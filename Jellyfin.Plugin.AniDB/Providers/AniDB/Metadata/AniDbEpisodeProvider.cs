@@ -289,8 +289,17 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
                                 break;
 
                             case "summary":
-                                var overview = "<br><br>" + AniDbSeriesProvider.ReplaceNewLine(await reader.ReadElementContentAsStringAsync().ConfigureAwait(false));
-                                episode.Overview +=  Plugin.Instance.Configuration.AniDbReplaceGraves ? overview.Replace('`', '\'') : overview;
+                                var overview = AniDbSeriesProvider.ReplaceNewLine(await reader.ReadElementContentAsStringAsync().ConfigureAwait(false));
+                                if (Plugin.Instance.Configuration.AniDbReplaceGraves)
+                                {
+                                    overview = overview.Replace('`', '\'');
+                                }
+
+                                // only append the overview for additional episodes if it's different
+                                if (overview != episode.Overview)
+                                {
+                                    episode.Overview += "<br><br>" + overview;
+                                }
 
                                 break;
                         }
