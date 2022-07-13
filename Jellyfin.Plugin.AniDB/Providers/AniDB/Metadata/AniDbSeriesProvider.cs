@@ -64,13 +64,13 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
 
             if (!string.IsNullOrEmpty(animeId))
             {
-                return await GetMetadataForId(animeId, info, cancellationToken);
+                return await GetMetadataForId(animeId, info.MetadataLanguage, cancellationToken);
             }
 
             return new MetadataResult<Series>();
         }
 
-        public async Task<MetadataResult<Series>> GetMetadataForId(string animeId, SeriesInfo info, CancellationToken cancellationToken)
+        public async Task<MetadataResult<Series>> GetMetadataForId(string animeId, string MetadataLanguage, CancellationToken cancellationToken)
         {
             var result = new MetadataResult<Series>();
 
@@ -80,7 +80,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             result.Item.ProviderIds.Add(ProviderNames.AniDb, animeId);
 
             var seriesDataPath = await GetSeriesData(_appPaths, animeId, cancellationToken);
-            await FetchSeriesInfo(result, seriesDataPath, info.MetadataLanguage ?? "en").ConfigureAwait(false);
+            await FetchSeriesInfo(result, seriesDataPath, MetadataLanguage ?? "en").ConfigureAwait(false);
 
             return result;
         }
@@ -92,7 +92,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
 
             if (!string.IsNullOrEmpty(animeId))
             {
-                var resultMetadata = await GetMetadataForId(animeId, searchInfo, cancellationToken);
+                var resultMetadata = await GetMetadataForId(animeId, searchInfo.MetadataLanguage, cancellationToken);
 
                 if (resultMetadata.HasMetadata)
                 {
@@ -124,7 +124,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
 
             foreach (string id in ids)
             {
-                var resultMetadata = await GetMetadataForId(id, searchInfo, cancellationToken);
+                var resultMetadata = await GetMetadataForId(id, searchInfo.MetadataLanguage, cancellationToken);
 
                 if (resultMetadata.HasMetadata)
                 {

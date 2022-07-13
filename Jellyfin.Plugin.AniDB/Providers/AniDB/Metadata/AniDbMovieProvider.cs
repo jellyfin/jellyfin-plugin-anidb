@@ -37,7 +37,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
 
             if (!string.IsNullOrEmpty(animeId))
             {
-                var seriesResult = await _seriesProvider.GetMetadataForId(animeId, seriesInfo, cancellationToken);
+                var seriesResult = await _seriesProvider.GetMetadataForId(animeId, seriesInfo.MetadataLanguage, cancellationToken);
 
                 if (seriesResult.HasMetadata)
                 {

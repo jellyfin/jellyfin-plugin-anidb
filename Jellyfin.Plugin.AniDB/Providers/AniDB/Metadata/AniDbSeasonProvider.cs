@@ -4,7 +4,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Net.Http;
 using MediaBrowser.Common.Configuration;
-using MediaBrowser.Common.Net;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Providers;
@@ -15,6 +14,8 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
     {
         private readonly AniDbSeriesProvider _seriesProvider;
 
+        public string Name => "AniDB";
+
         public AniDbSeasonProvider(IApplicationPaths appPaths)
         {
             _seriesProvider = new AniDbSeriesProvider(appPaths);
@@ -22,41 +23,44 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
 
         public async Task<MetadataResult<Season>> GetMetadata(SeasonInfo info, CancellationToken cancellationToken)
         {
-            var result = new MetadataResult<Season>
+            var animeId = info.ProviderIds.GetOrDefault(ProviderNames.AniDb);
+
+            // Get animeId from parent (series) if appropriate
+            if (string.IsNullOrEmpty(animeId) && (info.IndexNumber == 1 || (Plugin.Instance.Configuration.IgnoreSeason && info.IndexNumber > 0)))
             {
-                HasMetadata = true,
-                Item = new Season
+                animeId = info.SeriesProviderIds.GetOrDefault(ProviderNames.AniDb);
+            }
+
+            /* if (!string.IsNullOrEmpty(animeId))
+            {
+                var seriesResult = await _seriesProvider.GetMetadataForId(animeId, info.MetadataLanguage, cancellationToken);
+
+                if (seriesResult.HasMetadata)
                 {
-                    Name = info.Name,
-                    IndexNumber = info.IndexNumber
+                    return new MetadataResult<Season>
+                    {
+                        HasMetadata = true,
+                        Item = new Season
+                        {
+                            Name = seriesResult.Item.Name,
+                            OriginalTitle = seriesResult.Item.OriginalTitle,
+                            Overview = seriesResult.Item.Overview,
+                            PremiereDate = seriesResult.Item.PremiereDate,
+                            ProductionYear = seriesResult.Item.ProductionYear,
+                            EndDate = seriesResult.Item.EndDate,
+                            CommunityRating = seriesResult.Item.CommunityRating,
+                            Studios = seriesResult.Item.Studios,
+                            Genres = seriesResult.Item.Genres,
+                            ProviderIds = seriesResult.Item.ProviderIds
+                        },
+                        People = seriesResult.People,
+                        Images = seriesResult.Images
+                    };
                 }
-            };
+            } */
 
-            var seriesId = info.ProviderIds.GetOrDefault(ProviderNames.AniDb);
-            if (seriesId == null)
-            {
-                return result;
-            }
-
-            var seriesInfo = new SeriesInfo();
-            seriesInfo.ProviderIds.Add(ProviderNames.AniDb, seriesId);
-
-            var seriesResult = await _seriesProvider.GetMetadata(seriesInfo, cancellationToken);
-            if (seriesResult.HasMetadata)
-            {
-                result.Item.Name = seriesResult.Item.Name;
-                result.Item.Overview = seriesResult.Item.Overview;
-                result.Item.PremiereDate = seriesResult.Item.PremiereDate;
-                result.Item.EndDate = seriesResult.Item.EndDate;
-                result.Item.CommunityRating = seriesResult.Item.CommunityRating;
-                result.Item.Studios = seriesResult.Item.Studios;
-                result.Item.Genres = seriesResult.Item.Genres;
-            }
-
-            return result;
+            return new MetadataResult<Season>();
         }
-
-        public string Name => "AniDB";
 
         public async Task<IEnumerable<RemoteSearchResult>> GetSearchResults(SeasonInfo searchInfo, CancellationToken cancellationToken)
         {
