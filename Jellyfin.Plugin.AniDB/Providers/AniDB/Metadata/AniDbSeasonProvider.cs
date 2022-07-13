@@ -29,6 +29,21 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             if (string.IsNullOrEmpty(animeId) && (info.IndexNumber == 1 || (Plugin.Instance.Configuration.IgnoreSeason && info.IndexNumber > 0)))
             {
                 animeId = info.SeriesProviderIds.GetOrDefault(ProviderNames.AniDb);
+
+                if (!string.IsNullOrEmpty(animeId))
+                {
+                    var result = new MetadataResult<Season>
+                    {
+                        HasMetadata = true,
+                        Item = new Season
+                        {
+                            Name = info.Name,
+                            IndexNumber = info.IndexNumber
+                        }
+                    };
+                    result.Item.ProviderIds.Add(ProviderNames.AniDb, animeId);
+                    return result;
+                }
             }
 
             /* if (!string.IsNullOrEmpty(animeId))
