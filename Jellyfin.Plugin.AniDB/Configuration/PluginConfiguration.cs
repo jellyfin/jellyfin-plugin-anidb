@@ -38,6 +38,7 @@ namespace Jellyfin.Plugin.AniDB.Configuration
             TitleCaseGenres = false;
             AnimeDefaultGenre = AnimeDefaultGenreType.Anime;
             AniDbRateLimit = 2000;
+            MaxCacheAge = 7;
             AniDbReplaceGraves = true;
         }
 
@@ -58,6 +59,8 @@ namespace Jellyfin.Plugin.AniDB.Configuration
         public AnimeDefaultGenreType AnimeDefaultGenre { get; set; }
 
         public int AniDbRateLimit { get; set; }
+
+        public int MaxCacheAge { get; set; }
 
         public bool AniDbReplaceGraves { get; set; }
     }

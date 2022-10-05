@@ -68,6 +68,11 @@
                             <input id="chkAniDbRateLimit" name="chkAniDbRateLimit" type="number" is="emby-input" min="0" />
                             <div class="fieldDescription">This will prevent IP bans for requesting data too quickly.</div>
                         </div>
+                        <div class="inputContainer">
+                            <label class="inputeLabel inputLabelUnfocused" for="chkMaxCacheAge">Maximum Cache Age</label>
+                            <input id="chkMaxCacheAge" name="chkMaxCacheAge" type="number" is="emby-input" min="0" />
+                            <div class="fieldDescription">How many days cached series metadata will be reused before fetching new metatdata from AniDB.</div>
+                        </div>
                         <div class="checkboxContainer checkboxContainer-withDescription">
                             <label class="emby-checkbox-label">
                                 <input id="chkAniDbReplaceGraves" name="chkAniDbReplaceGraves" type="checkbox" is="emby-checkbox" />
@@ -100,6 +105,7 @@
                             document.getElementById('chkTidyGenres').checked = config.TidyGenreList;
                             document.getElementById('animeDefaultGenre').value = config.AnimeDefaultGenre;
                             document.getElementById('chkAniDbRateLimit').value = config.AniDbRateLimit;
+                            document.getElementById('chkMaxCacheAge').value = config.MaxCacheAge;
                             document.getElementById('chkAniDbReplaceGraves').checked = config.AniDbReplaceGraves;
 
                             Dashboard.hideLoadingMsg();
@@ -119,6 +125,7 @@
                             config.TidyGenreList = document.getElementById('chkTidyGenres').checked;
                             config.AnimeDefaultGenre = document.getElementById('animeDefaultGenre').value;
                             config.AniDbRateLimit = document.getElementById('chkAniDbRateLimit').value;
+                            config.MaxCacheAge = document.getElementById('chkMaxCacheAge').value;
                             config.AniDbReplaceGraves = document.getElementById('chkAniDbReplaceGraves').checked;
 
                             ApiClient.updatePluginConfiguration(AniDBConfigurationPage.pluginUniqueId, config).then(function (result) {

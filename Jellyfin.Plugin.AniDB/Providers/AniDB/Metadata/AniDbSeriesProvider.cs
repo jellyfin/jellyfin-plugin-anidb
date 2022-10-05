@@ -162,7 +162,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             var fileInfo = new FileInfo(seriesDataPath);
 
             // download series data if not present or out of date
-            if (!fileInfo.Exists || DateTime.UtcNow - fileInfo.LastWriteTimeUtc > TimeSpan.FromDays(7))
+            if (!fileInfo.Exists || DateTime.UtcNow - fileInfo.LastWriteTimeUtc > TimeSpan.FromDays(Plugin.Instance.Configuration.MaxCacheAge))
             {
                 await DownloadSeriesData(seriesId, seriesDataPath, appPaths.CachePath, cancellationToken).ConfigureAwait(false);
             }
