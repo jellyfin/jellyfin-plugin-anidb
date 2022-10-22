@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -10,7 +11,6 @@ using System.Threading.Tasks;
 using System.Xml;
 using System.Xml.Linq;
 using System.Xml.Serialization;
-using System.Net.Http;
 using Jellyfin.Plugin.AniDB.Configuration;
 using Jellyfin.Plugin.AniDB.Providers.AniDB.Identity;
 using MediaBrowser.Common.Configuration;
@@ -348,9 +348,9 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             {
                 if (reader.NodeType == XmlNodeType.Element && reader.Name == "tag")
                 {
-                    if (!int.TryParse(reader.GetAttribute("weight"), out int weight) || weight < 400)
+                    if (!int.TryParse(reader.GetAttribute("weight"), out int weight))
                     {
-                        continue;
+                        weight = 0;
                     }
 
                     if (int.TryParse(reader.GetAttribute("id"), out int id) && IgnoredTagIds.Contains(id))
@@ -371,7 +371,14 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
                             if (tagSubtree.NodeType == XmlNodeType.Element && tagSubtree.Name == "name")
                             {
                                 var name = await tagSubtree.ReadElementContentAsStringAsync().ConfigureAwait(false);
-                                genres.Add(new GenreInfo { Name = name, Weight = weight });
+                                if (name == "18 restricted")
+                                {
+                                    series.OfficialRating = "NC-17";
+                                }
+                                if (weight >= 400)
+                                {
+                                    genres.Add(new GenreInfo { Name = name, Weight = weight });
+                                }
                             }
                         }
                     }
