@@ -16,6 +16,7 @@ namespace Jellyfin.Plugin.AniDB.Providers
         private static readonly Regex _specialCharacterRegex = new(@"[!,–—_=~'`‚‘’„“”:;␣#@<>}\]\/\-]", RegexOptions.Compiled);
         private static readonly Regex _sAtEndBoundaryRegex = new(@"s\b", RegexOptions.Compiled);
         private static readonly Regex _titleRegex = new(@"<title.*>([^<]+)</title>", RegexOptions.Compiled);
+        private static readonly Regex _stripYearRegex = new(@" \([0-9]{4}\)$", RegexOptions.Compiled);
 
         public Equals_check(ILogger<Equals_check> logger)
         {
@@ -127,7 +128,8 @@ namespace Jellyfin.Plugin.AniDB.Providers
                 string xml = File.ReadAllText(GetAnidbXml());
                 string s = "-";
                 int x = 0;
-                Regex searchRegex = new Regex(@"<anime aid=""([0-9]+)"">(?>[^<>]+|<(?!\/anime>)[^<>]*>)*?.*" + FuzzyRegexEscape(ShortenString(name, 6, 20)), RegexOptions.IgnoreCase | RegexOptions.Compiled);
+                string strippedName = _stripYearRegex.Replace(name, string.Empty);
+                Regex searchRegex = new Regex(@"<anime aid=""([0-9]+)"">(?>[^<>]+|<(?!\/anime>)[^<>]*>)*?.*" + FuzzyRegexEscape(ShortenString(strippedName, 6, 20)), RegexOptions.IgnoreCase | RegexOptions.Compiled);
                 while (!string.IsNullOrEmpty(s))
                 {
                     s = OneLineRegex(searchRegex, xml, 1, x);
