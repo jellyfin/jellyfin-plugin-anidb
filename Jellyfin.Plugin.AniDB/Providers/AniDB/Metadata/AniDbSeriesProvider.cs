@@ -33,6 +33,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
         public static readonly RateLimiter RequestLimiter = new RateLimiter(TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(5), TimeSpan.FromMinutes(5));
         private static readonly int[] IgnoredTagIds = { 6, 22, 23, 60, 128, 129, 185, 216, 242, 255, 268, 269, 289 };
         private static readonly Regex AniDbUrlRegex = new Regex(@"https?://anidb.net/\w+(/[0-9]+)? \[(?<name>[^\]]*)\]", RegexOptions.Compiled);
+        private static readonly Regex AniDbIdRegex = new Regex(@"\[anidb-(\d+)\]", RegexOptions.Compiled);
         private static readonly Regex _errorRegex = new(@"<error code=""[0-9]+"">[a-zA-Z]+</error>", RegexOptions.Compiled);
         private readonly IApplicationPaths _appPaths;
 
@@ -55,9 +56,26 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
         public int Order => -1;
         public string Name => "AniDB";
 
+        private static string GetAniDbIdFromPath(string path)
+        {
+            if (!string.IsNullOrEmpty(path))
+            {
+                MatchCollection idMatches = AniDbIdRegex.Matches(path);
+                if (idMatches.Count == 1)
+                {
+                    return idMatches[0].Groups[1].Value;
+                }
+            }
+            return string.Empty;
+        }
+
         public async Task<MetadataResult<Series>> GetMetadata(SeriesInfo info, CancellationToken cancellationToken)
         {
-            var animeId = info.ProviderIds.GetOrDefault(ProviderNames.AniDb);
+            var animeId = GetAniDbIdFromPath(info.Path);
+            if (string.IsNullOrEmpty(animeId)) 
+            {
+                animeId = info.ProviderIds.GetOrDefault(ProviderNames.AniDb);
+            }
 
             if (string.IsNullOrEmpty(animeId) && !string.IsNullOrEmpty(info.Name))
             {
