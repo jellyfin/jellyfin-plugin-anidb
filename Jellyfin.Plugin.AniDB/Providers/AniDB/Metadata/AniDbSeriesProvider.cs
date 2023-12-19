@@ -60,10 +60,10 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
         {
             if (!string.IsNullOrEmpty(path))
             {
-                MatchCollection idMatches = AniDbIdRegex.Matches(path);
-                if (idMatches.Count == 1)
+                var match = AniDbIdRegex.Match(path);
+                if (match is { Success: true, Groups.Count: 2 })
                 {
-                    return idMatches[0].Groups[1].Value;
+                    return match.Groups[1].Value;
                 }
             }
             return string.Empty;
