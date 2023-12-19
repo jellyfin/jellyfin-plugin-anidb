@@ -71,10 +71,10 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
 
         public async Task<MetadataResult<Series>> GetMetadata(SeriesInfo info, CancellationToken cancellationToken)
         {
-            var animeId = GetAniDbIdFromPath(info.Path);
+            var animeId = info.ProviderIds.GetOrDefault(ProviderNames.AniDb);
             if (string.IsNullOrEmpty(animeId)) 
             {
-                animeId = info.ProviderIds.GetOrDefault(ProviderNames.AniDb);
+                animeId = GetAniDbIdFromPath(info.Path);
             }
 
             if (string.IsNullOrEmpty(animeId) && !string.IsNullOrEmpty(info.Name))
