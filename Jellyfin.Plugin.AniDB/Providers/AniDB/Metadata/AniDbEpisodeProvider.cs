@@ -71,12 +71,27 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             result.Item = new Episode
             {
                 IndexNumber = info.IndexNumber,
+                IndexNumberEnd = info.IndexNumberEnd,
                 ParentIndexNumber = info.ParentIndexNumber
             };
 
             result.HasMetadata = true;
 
             await ParseEpisodeXml(xml, result.Item, info.MetadataLanguage).ConfigureAwait(false);
+
+            if (info.IndexNumberEnd != null && info.IndexNumberEnd > info.IndexNumber)
+            {
+                for (var i = info.IndexNumber + 1; i <= info.IndexNumberEnd; i++)
+                {
+                    var additionalXml = GetEpisodeXmlFile(i, episodeType, seriesFolder);
+                    if (additionalXml == null || !additionalXml.Exists)
+                    {
+                        continue;
+                    }
+
+                    await ParseAdditionalEpisodeXml(additionalXml, result.Item, info.MetadataLanguage).ConfigureAwait(false);
+                }
+            }
 
             return result;
         }
@@ -186,7 +201,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
                                 int count;
                                 float rating;
                                 if (int.TryParse(reader.GetAttribute("count"), NumberStyles.Any, CultureInfo.InvariantCulture, out count) &&
-                                    float.TryParse(reader.ReadElementContentAsString(), NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out rating))
+                                    float.TryParse(await reader.ReadElementContentAsStringAsync().ConfigureAwait(false), NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out rating))
                                 {
                                     episode.CommunityRating = rating;
                                 }
@@ -195,7 +210,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
 
                             case "title":
                                 var language = reader.GetAttribute("xml:lang");
-                                var name = reader.ReadElementContentAsString();
+                                var name = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
 
                                 titles.Add(new Title
                                 {
@@ -207,7 +222,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
                                 break;
 
                             case "summary":
-                                var overview = AniDbSeriesProvider.ReplaceNewLine(reader.ReadElementContentAsString());
+                                var overview = AniDbSeriesProvider.ReplaceNewLine(await reader.ReadElementContentAsStringAsync().ConfigureAwait(false));
                                 episode.Overview = Plugin.Instance.Configuration.AniDbReplaceGraves ? overview.Replace('`', '\'') : overview;
 
                                 break;
@@ -219,6 +234,83 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
                 if (!string.IsNullOrEmpty(title))
                 {
                     episode.Name = Plugin.Instance.Configuration.AniDbReplaceGraves
+                        ? title.Replace('`', '\'')
+                        : title;
+                }
+            }
+        }
+
+        private async Task ParseAdditionalEpisodeXml(FileInfo xml, Episode episode, string preferredMetadataLanguage)
+        {
+            var settings = new XmlReaderSettings
+            {
+                Async = true,
+                CheckCharacters = false,
+                IgnoreProcessingInstructions = true,
+                IgnoreComments = true,
+                ValidationType = ValidationType.None
+            };
+
+            using (var streamReader = xml.OpenText())
+            using (var reader = XmlReader.Create(streamReader, settings))
+            {
+                var titles = new List<Title>();
+
+                while (await reader.ReadAsync().ConfigureAwait(false))
+                {
+                    if (reader.NodeType == XmlNodeType.Element)
+                    {
+                        switch (reader.Name)
+                        {
+                            case "length":
+                                var length = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
+                                if (!string.IsNullOrEmpty(length))
+                                {
+                                    long duration;
+                                    if (long.TryParse(length, out duration))
+                                    {
+                                        episode.RunTimeTicks += TimeSpan.FromMinutes(duration).Ticks;
+                                    }
+                                }
+
+                                break;
+
+                            case "title":
+                                var language = reader.GetAttribute("xml:lang");
+                                var name = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
+
+                                titles.Add(new Title
+                                {
+                                    Language = language,
+                                    Type = "main",
+                                    Name = name
+                                });
+
+                                break;
+
+                            case "summary":
+                                var overview = AniDbSeriesProvider.ReplaceNewLine(await reader.ReadElementContentAsStringAsync().ConfigureAwait(false));
+                                if (Plugin.Instance.Configuration.AniDbReplaceGraves)
+                                {
+                                    overview = overview.Replace('`', '\'');
+                                }
+
+                                // only append the overview for additional episodes if it's different
+                                if (overview != episode.Overview)
+                                {
+                                    episode.Overview += "<br><br>" + overview;
+                                }
+
+                                break;
+                        }
+                    }
+                }
+
+                var title = titles.Localize(Configuration.TitlePreferenceType.Localized, preferredMetadataLanguage).Name;
+                if (!string.IsNullOrEmpty(title))
+                {
+                    title = ", " + title;
+                    episode.Name += Plugin.Instance.Configuration.AniDbReplaceGraves
                         ? title.Replace('`', '\'')
                         : title;
                 }
