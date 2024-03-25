@@ -2,8 +2,8 @@ name: "AniDB"
 guid: "a2b2a7ed-aa28-4521-a64a-63d86901f246"
 imageUrl: https://repo.jellyfin.org/releases/plugin/images/jellyfin-plugin-anidb.png
 version: 7
-targetAbi: "10.8.1.0"
-framework: "net6.0"
+targetAbi: "10.9.0.0"
+framework: "net8.0"
 owner: "jellyfin"
 overview: "AniDB metadata provider"
 description: >
@@ -13,13 +13,3 @@ category: "Metadata"
 artifacts:
   - "Jellyfin.Plugin.AniDB.dll"
 changelog: |2-
-  ### New features and improvements ###
-  - Add AniDbExternalEpisodeId (#32) @Nalsai
-  - Add support for "Mahoutsukai" and fix "Gekijyouban" (#31) @Nalsai
-
-  ### Bug Fixes ###
-  - Fix automatically detecting Movies (#38) @Nalsai
-  - Add support for "Mahoutsukai" and fix "Gekijyouban" (#31) @Nalsai
-
-  ### CI & build changes ###
-  - fix: meta ci workflows (#35) @h1dden-da3m0n
