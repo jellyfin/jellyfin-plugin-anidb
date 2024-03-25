@@ -87,6 +87,7 @@ namespace Jellyfin.Plugin.AniDB.Providers
             a = a.Replace("OAD", "((OVA)|(OAD))", StringComparison.OrdinalIgnoreCase);
             a = a.Replace("c", "(c|k)", StringComparison.OrdinalIgnoreCase);
             a = a.Replace("k", "(c|k)", StringComparison.OrdinalIgnoreCase);
+            a = a.Replace("n", "n`?", StringComparison.OrdinalIgnoreCase);
             a = a.Replace("&", "(&|(and))", StringComparison.OrdinalIgnoreCase);
             a = a.Replace("and", "(&|(and))", StringComparison.OrdinalIgnoreCase);
 
@@ -165,7 +166,7 @@ namespace Jellyfin.Plugin.AniDB.Providers
             string xml = File.ReadAllText(GetAnidbXml());
             int lowestDistance = Plugin.Instance.Configuration.TitleSimilarityThreshold;
             string currentId = "";
-            
+
             foreach (string id in results)
             {
                 string nameXmlFromId = OneLineRegex(new Regex(@"<anime aid=""" + id + @"""((?s).*?)<\/anime>", RegexOptions.Compiled), xml);
