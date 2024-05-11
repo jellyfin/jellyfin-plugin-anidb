@@ -1,7 +1,7 @@
 name: "AniDB"
 guid: "a2b2a7ed-aa28-4521-a64a-63d86901f246"
 imageUrl: https://repo.jellyfin.org/releases/plugin/images/jellyfin-plugin-anidb.png
-version: 7
+version: 8
 targetAbi: "10.9.0.0"
 framework: "net8.0"
 owner: "jellyfin"
@@ -12,4 +12,14 @@ description: >
 category: "Metadata"
 artifacts:
   - "Jellyfin.Plugin.AniDB.dll"
-changelog: |2-
+changelog: |-
+  - 10.9 (#64) @crobibero
+
+  ### New features and improvements ###
+  - Make series.xml cache age user configurable (#44) @Scholars-Mate
+
+  ### Bug Fixes ###
+  - Detect api errors and throw exception (#42) @nalsai
+
+  ### Code or Repo Maintenance ###
+  - Update link to Jellyfin website (#62) @methbkts
