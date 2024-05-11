@@ -11,6 +11,7 @@ using System.Xml;
 using System.Xml.Linq;
 using System.Xml.Serialization;
 using System.Net.Http;
+using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.AniDB.Configuration;
 using Jellyfin.Plugin.AniDB.Providers.AniDB.Identity;
 using MediaBrowser.Common.Configuration;
@@ -35,11 +36,11 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
         private static readonly Regex _errorRegex = new(@"<error code=""[0-9]+"">[a-zA-Z]+</error>", RegexOptions.Compiled);
         private readonly IApplicationPaths _appPaths;
 
-        private readonly Dictionary<string, string> _typeMappings = new Dictionary<string, string>
+        private readonly Dictionary<string, PersonKind> _typeMappings = new()
         {
-            {"Direction", PersonType.Director},
-            {"Music", PersonType.Composer},
-            {"Chief Animation Direction", PersonType.Director}
+            {"Direction", PersonKind.Director},
+            {"Music", PersonKind.Composer},
+            {"Chief Animation Direction", PersonKind.Director}
         };
 
         public AniDbSeriesProvider(IApplicationPaths appPaths)
@@ -536,15 +537,15 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
         {
             // todo find nationality of person and conditionally reverse name order
 
-            if (!_typeMappings.TryGetValue(type, out string mappedType))
+            if (!Enum.TryParse(type, out PersonKind personKind))
             {
-                mappedType = type;
+                personKind = _typeMappings.GetValueOrDefault(type, PersonKind.Actor);
             }
 
             return new PersonInfo
             {
                 Name = ReverseNameOrder(name),
-                Type = mappedType,
+                Type = personKind,
                 Role = role
             };
         }
