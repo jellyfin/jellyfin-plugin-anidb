@@ -88,7 +88,7 @@ namespace Jellyfin.Plugin.AniDB.Providers
             a = a.Replace("wo", "w?o", StringComparison.OrdinalIgnoreCase);
             a = a.Replace("c", "(c|k)", StringComparison.OrdinalIgnoreCase);
             a = a.Replace("k", "(c|k)", StringComparison.OrdinalIgnoreCase);
-            a = a.Replace("n", "n`?", StringComparison.OrdinalIgnoreCase);
+            a = a.Replace("n", @"n`?", StringComparison.OrdinalIgnoreCase);
             a = a.Replace("&", "(&|(and))", StringComparison.OrdinalIgnoreCase);
             a = a.Replace("and", "(&|(and))", StringComparison.OrdinalIgnoreCase);
 
