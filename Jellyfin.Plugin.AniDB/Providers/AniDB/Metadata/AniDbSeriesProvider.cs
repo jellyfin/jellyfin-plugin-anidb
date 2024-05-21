@@ -374,7 +374,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
                                 var name = await tagSubtree.ReadElementContentAsStringAsync().ConfigureAwait(false);
                                 if (name == "18 restricted")
                                 {
-                                    series.OfficialRating = "NC-17";
+                                    series.OfficialRating = "XXX";
                                 }
                                 if (weight >= 400)
                                 {
