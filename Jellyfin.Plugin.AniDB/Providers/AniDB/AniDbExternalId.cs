@@ -9,7 +9,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB
     public class AniDbExternalId : IExternalId
     {
         public bool Supports(IHasProviderIds item)
-            => item is Series || item is Movie;
+            => item is Series || item is Season || item is Movie;
 
         public string ProviderName
             => "AniDB";
