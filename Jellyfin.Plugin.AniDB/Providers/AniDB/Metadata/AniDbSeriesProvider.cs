@@ -33,7 +33,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
         public static readonly RateLimiter RequestLimiter = new RateLimiter(TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(5), TimeSpan.FromMinutes(5));
         private static readonly int[] IgnoredTagIds = { 6, 22, 23, 60, 128, 129, 185, 216, 242, 255, 268, 269, 289 };
         private static readonly Regex AniDbUrlRegex = new Regex(@"https?://anidb.net/\w+(/[0-9]+)? \[(?<name>[^\]]*)\]", RegexOptions.Compiled);
-        private static readonly Regex AniDbIdRegex = new Regex(@"\[anidb-([0-9]+)\]", RegexOptions.Compiled);
+        private static readonly Regex AniDbIdRegex = new Regex(@"\[anidb(id)?-(?<anidb_id>[0-9]+)\]", RegexOptions.Compiled);
         private static readonly Regex _errorRegex = new(@"<error code=""[0-9]+"">[a-zA-Z]+</error>", RegexOptions.Compiled);
         private readonly IApplicationPaths _appPaths;
 
@@ -61,9 +61,8 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             if (!string.IsNullOrEmpty(path))
             {
                 var match = AniDbIdRegex.Match(path);
-                if (match is { Success: true, Groups.Count: 2 })
-                {
-                    return match.Groups[1].Value;
+                if (match.Success) {
+                    return match.Groups["anidb_id"].Value;
                 }
             }
             return string.Empty;
