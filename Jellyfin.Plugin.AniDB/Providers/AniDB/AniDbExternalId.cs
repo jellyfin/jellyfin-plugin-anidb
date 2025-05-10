@@ -19,8 +19,5 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB
 
         public ExternalIdMediaType? Type
             => null;
-
-        public string UrlFormatString
-            => "https://anidb.net/anime/{0}";
     }
 }
