@@ -14,11 +14,6 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Identity;
 /// </summary>
 public class AniDbTitleDownloader : IAniDbTitleDownloader
 {
-    /// <summary>
-    /// The URL for retrieving a list of all anime titles and their AniDB IDs.
-    /// </summary>
-    private const string TitlesUrl = "https://anidb.net/api/anime-titles.xml.gz";
-
     private readonly ILogger<AniDbTitleDownloader> _logger;
 
     /// <summary>
@@ -112,7 +107,8 @@ public class AniDbTitleDownloader : IAniDbTitleDownloader
     {
         var httpClient = Plugin.Instance.GetHttpClient();
         await AniDbSeriesProvider.WaitForRequestSlot(cancellationToken).ConfigureAwait(false);
-        using var stream = await httpClient.GetStreamAsync(new Uri(TitlesUrl), cancellationToken).ConfigureAwait(false);
+        // The URL for retrieving a list of all anime titles and their AniDB IDs.
+        using var stream = await httpClient.GetStreamAsync(new Uri("https://anidb.net/api/anime-titles.xml.gz"), cancellationToken).ConfigureAwait(false);
         using var unzipped = new GZipStream(stream, CompressionMode.Decompress);
         using var writer = File.Open(titlesFile, FileMode.Create, FileAccess.Write);
         await unzipped.CopyToAsync(writer, cancellationToken).ConfigureAwait(false);

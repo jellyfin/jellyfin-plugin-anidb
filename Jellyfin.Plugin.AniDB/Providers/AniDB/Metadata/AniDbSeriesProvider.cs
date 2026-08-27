@@ -29,10 +29,6 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata;
 /// </summary>
 public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, SeriesInfo>, IHasOrder
 {
-    private const string SeriesDataFile = "series.xml";
-    private const string SeriesQueryUrl = "http://api.anidb.net:9001/httpapi?request=anime&client={0}&clientver=1&protover=1&aid={1}";
-    private const string ClientName = "mediabrowser";
-
     // AniDB has very low request rate limits, so allow at most one request every two seconds.
     private static readonly RateLimiter _requestLimiter = new TokenBucketRateLimiter(new TokenBucketRateLimiterOptions
     {
@@ -47,7 +43,7 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     private static readonly int[] IgnoredTagIds = [6, 22, 23, 60, 128, 129, 185, 216, 242, 255, 268, 269, 289];
     private static readonly Regex AniDbUrlRegex = MyRegex();
     private static readonly Regex _errorRegex = new(@"<error code=""[0-9]+"">[a-zA-Z]+</error>", RegexOptions.Compiled);
-    private static readonly CompositeFormat _seriesQueryUrlFormat = CompositeFormat.Parse(SeriesQueryUrl);
+    private static readonly CompositeFormat _seriesQueryUrlFormat = CompositeFormat.Parse("http://api.anidb.net:9001/httpapi?request=anime&client={0}&clientver=1&protover=1&aid={1}");
     private readonly IApplicationPaths _appPaths;
 
     private readonly Dictionary<string, PersonKind> _typeMappings = new()
@@ -212,7 +208,7 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     public static async Task<string> GetSeriesData(IApplicationPaths appPaths, string seriesId, CancellationToken cancellationToken)
     {
         var dataPath = GetSeriesDataPath(appPaths, seriesId);
-        var seriesDataPath = Path.Combine(dataPath, SeriesDataFile);
+        var seriesDataPath = Path.Combine(dataPath, "series.xml");
         var fileInfo = new FileInfo(seriesDataPath);
 
         var isEmpty = fileInfo.Exists && fileInfo.Length == 0;
@@ -646,7 +642,7 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
         DeleteXmlFiles(directory);
 
         var httpClient = Plugin.Instance.GetHttpClient();
-        var url = string.Format(CultureInfo.InvariantCulture, _seriesQueryUrlFormat, ClientName, aid);
+        var url = string.Format(CultureInfo.InvariantCulture, _seriesQueryUrlFormat, "mediabrowser", aid);
 
         await WaitForRequestSlot(cancellationToken).ConfigureAwait(false);
 

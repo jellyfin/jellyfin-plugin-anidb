@@ -21,9 +21,6 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Identity;
 /// <param name="downloader">The AniDB title downloader.</param>
 public sealed class AniDbTitleMatcher(ILogger<AniDbTitleMatcher> logger, IAniDbTitleDownloader downloader) : IAniDbTitleMatcher, IDisposable
 {
-    private const string Remove = "\"'!`?";
-    private const string Spacers = "/,.:;\\(){}[]+-_=–*";  // (there are not actually two - in the they are different char codes)
-
     private static Dictionary<string, TitleInfo>? _titles;
 
     private readonly IAniDbTitleDownloader _downloader = downloader;
@@ -103,11 +100,11 @@ public sealed class AniDbTitleMatcher(ILogger<AniDbTitleMatcher> logger, IAniDbT
             {
                 // skip char modifier and diacritics
             }
-            else if (Remove.Contains(c, StringComparison.Ordinal))
+            else if ("\"'!`?".Contains(c, StringComparison.Ordinal))
             {
                 // skip chars we are removing
             }
-            else if (Spacers.Contains(c, StringComparison.Ordinal))
+            else if ("/,.:;\\(){}[]+-_=–*".Contains(c, StringComparison.Ordinal)) // (there are not actually two - in the they are different char codes)
             {
                 sb.Append(' ');
             }
