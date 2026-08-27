@@ -48,12 +48,9 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     // twice as long after each consecutive ban and reset once a request succeeds.
     private static readonly TimeSpan _initialBanBackoff = TimeSpan.FromMinutes(30);
     private static readonly TimeSpan _maximumBanBackoff = TimeSpan.FromHours(24);
-    private static readonly Regex _bannedRegex = new("banned", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Lock _banLock = new();
 
     private static readonly int[] IgnoredTagIds = [6, 22, 23, 60, 128, 129, 185, 216, 242, 255, 268, 269, 289];
-    private static readonly Regex AniDbUrlRegex = MyRegex();
-    private static readonly Regex _errorRegex = new(@"<error[^>]*>.*?</error>", RegexOptions.Compiled | RegexOptions.Singleline);
     private static readonly CompositeFormat _seriesQueryUrlFormat = CompositeFormat.Parse("http://api.anidb.net:9001/httpapi?request=anime&client={0}&clientver=1&protover=1&aid={1}");
 
     /// <summary>
@@ -729,7 +726,7 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
 
     private static string StripAniDbLinks(string text)
     {
-        return AniDbUrlRegex.Replace(text, "${name}");
+        return AniDbUrlRegex().Replace(text, "${name}");
     }
 
     /// <summary>
@@ -911,11 +908,11 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
         // and the daily quota is low, so overwriting good cached data with an error would
         // force another request on the very next scan - precisely when no request must be
         // made. On failure the previous cache is left intact.
-        var errorRegexMatch = _errorRegex.Match(text);
+        var errorRegexMatch = ErrorRegex().Match(text);
         if (errorRegexMatch.Success)
         {
             // A ban is reported as either <error>Banned</error> or <error code="500">banned</error>.
-            if (_bannedRegex.IsMatch(errorRegexMatch.Value))
+            if (BannedRegex().IsMatch(errorRegexMatch.Value))
             {
                 var retryAfter = RegisterBan();
 
@@ -1242,8 +1239,14 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
         return Path.Combine(appPaths.CachePath, "anidb", "series", seriesId);
     }
 
-    [GeneratedRegex(@"https?://anidb.net/\w+(/[0-9]+)? \[(?<name>[^\]]*)\]", RegexOptions.Compiled)]
-    private static partial Regex MyRegex();
+    [GeneratedRegex(@"https?://anidb.net/\w+(/[0-9]+)? \[(?<name>[^\]]*)\]")]
+    private static partial Regex AniDbUrlRegex();
+
+    [GeneratedRegex(@"<error[^>]*>.*?</error>", RegexOptions.Singleline)]
+    private static partial Regex ErrorRegex();
+
+    [GeneratedRegex("banned", RegexOptions.IgnoreCase)]
+    private static partial Regex BannedRegex();
 
     private struct GenreInfo
     {
