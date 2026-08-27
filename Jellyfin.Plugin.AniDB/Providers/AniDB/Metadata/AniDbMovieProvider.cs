@@ -1,28 +1,26 @@
 using System.Collections.Generic;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Net.Http;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Providers;
-using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
 {
-    public class AniDbMovieProvider : IRemoteMetadataProvider<Movie, MovieInfo>
+    /// <summary>
+    /// The AniDB metadata provider for movies.
+    /// </summary>
+    /// <param name="appPaths">Instance of the <see cref="IApplicationPaths"/> interface.</param>
+    public class AniDbMovieProvider(IApplicationPaths appPaths) : IRemoteMetadataProvider<Movie, MovieInfo>
     {
-        private readonly AniDbSeriesProvider _seriesProvider;
-        private readonly ILogger<AniDbMovieProvider> _logger;
+        private readonly AniDbSeriesProvider _seriesProvider = new AniDbSeriesProvider(appPaths);
 
+        /// <inheritdoc />
         public string Name => "AniDB";
 
-        public AniDbMovieProvider(IApplicationPaths appPaths, ILogger<AniDbMovieProvider> logger)
-        {
-            _seriesProvider = new AniDbSeriesProvider(appPaths);
-            _logger = logger;
-        }
-
+        /// <inheritdoc />
         public async Task<MetadataResult<Movie>> GetMetadata(MovieInfo info, CancellationToken cancellationToken)
         {
             var animeId = info.ProviderIds.GetOrDefault(ProviderNames.AniDb);
@@ -32,12 +30,12 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
 
             if (string.IsNullOrEmpty(animeId) && !string.IsNullOrEmpty(info.Name))
             {
-                animeId = await Equals_check.XmlFindId(info.Name, cancellationToken);
+                animeId = await Equals_check.XmlFindId(info.Name, cancellationToken).ConfigureAwait(false);
             }
 
             if (!string.IsNullOrEmpty(animeId))
             {
-                var seriesResult = await _seriesProvider.GetMetadataForId(animeId, seriesInfo, cancellationToken);
+                var seriesResult = await _seriesProvider.GetMetadataForId(animeId, seriesInfo, cancellationToken).ConfigureAwait(false);
 
                 if (seriesResult.HasMetadata)
                 {
@@ -66,6 +64,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             return new MetadataResult<Movie>();
         }
 
+        /// <inheritdoc />
         public async Task<IEnumerable<RemoteSearchResult>> GetSearchResults(MovieInfo searchInfo, CancellationToken cancellationToken)
         {
             var seriesInfo = new SeriesInfo();
@@ -78,9 +77,10 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
 
             seriesInfo.Name = searchInfo.Name;
 
-            return await _seriesProvider.GetSearchResults(seriesInfo, cancellationToken);
+            return await _seriesProvider.GetSearchResults(seriesInfo, cancellationToken).ConfigureAwait(false);
         }
 
+        /// <inheritdoc />
         public Task<HttpResponseMessage> GetImageResponse(string url, CancellationToken cancellationToken)
         {
             return _seriesProvider.GetImageResponse(url, cancellationToken);

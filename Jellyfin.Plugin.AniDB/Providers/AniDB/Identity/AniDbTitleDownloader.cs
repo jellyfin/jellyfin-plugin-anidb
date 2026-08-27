@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.IO.Compression;
-using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata;
@@ -22,17 +21,45 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Identity
 
         private readonly ILogger<AniDbTitleDownloader> _logger;
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="AniDbTitleDownloader"/> class.
+        /// </summary>
+        /// <param name="logger">Instance of the <see cref="ILogger{AniDbTitleDownloader}"/> interface.</param>
+        /// <param name="applicationPaths">Instance of the <see cref="IApplicationPaths"/> interface.</param>
         public AniDbTitleDownloader(ILogger<AniDbTitleDownloader> logger, IApplicationPaths applicationPaths)
         {
             _logger = logger;
             Paths = GetDataPath(applicationPaths);
         }
 
-        static AniDbTitleDownloader()
+        /// <summary>
+        /// Gets the path to the anidb data folder.
+        /// </summary>
+        public static string Paths { get; private set; } = null!;
+
+        /// <summary>
+        /// Gets the path to the titles.xml file, without requiring an instance.
+        /// </summary>
+        public static string StaticTitlesFilePath
         {
+            get
+            {
+                Directory.CreateDirectory(Paths);
+
+                return Path.Combine(Paths, "titles.xml");
+            }
         }
 
-        public static string Paths { get; private set; }
+        /// <inheritdoc />
+        public string TitlesFilePath
+        {
+            get
+            {
+                Directory.CreateDirectory(Paths);
+
+                return Path.Combine(Paths, "titles.xml");
+            }
+        }
 
         /// <summary>
         /// Gets the path to the anidb data folder.
@@ -45,22 +72,23 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Identity
         }
 
         /// <summary>
-        /// Load XML static| Too prevent EXCEPTIONS
+        /// Downloads the titles file if needed, without requiring an instance.
         /// </summary>
-        /// <param name="cancellationToken"></param>
-        /// <returns></returns>
-        public static async Task Load_static(CancellationToken cancellationToken)
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
+        public static async Task LoadStatic(CancellationToken cancellationToken)
         {
-            var titlesFile = TitlesFilePath_;
+            var titlesFile = StaticTitlesFilePath;
             var titlesFileInfo = new FileInfo(titlesFile);
 
             // download titles if we do not already have them, or have not updated for a week
             if (!titlesFileInfo.Exists || (DateTime.UtcNow - titlesFileInfo.LastWriteTimeUtc).TotalDays > 7)
             {
-                await DownloadTitles_static(titlesFile, cancellationToken).ConfigureAwait(false);
+                await DownloadTitlesStatic(titlesFile, cancellationToken).ConfigureAwait(false);
             }
         }
 
+        /// <inheritdoc />
         public async Task Load(CancellationToken cancellationToken)
         {
             var titlesFile = TitlesFilePath;
@@ -78,51 +106,29 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Identity
         /// and saves it to disk.
         /// </summary>
         /// <param name="titlesFile">The destination file name.</param>
-        private Task DownloadTitles(string titlesFile, CancellationToken cancellationToken)
-        {
-            _logger.LogDebug("Downloading new AniDB titles file.");
-            return DownloadTitles_static(titlesFile, cancellationToken);
-        }
-
-        /// <summary>
-        /// static|Downloads an xml file from AniDB which contains all of the titles for every anime, and their IDs,
-        /// and saves it to disk.
-        /// </summary>
-        /// <param name="titlesFile"></param>
-        /// <returns></returns>
-        private static async Task DownloadTitles_static(string titlesFile, CancellationToken cancellationToken)
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
+        private static async Task DownloadTitlesStatic(string titlesFile, CancellationToken cancellationToken)
         {
             var httpClient = Plugin.Instance.GetHttpClient();
             await AniDbSeriesProvider.WaitForRequestSlot(cancellationToken).ConfigureAwait(false);
-            using (var stream = await httpClient.GetStreamAsync(TitlesUrl, cancellationToken).ConfigureAwait(false))
-            using (var unzipped = new GZipStream(stream, CompressionMode.Decompress))
-            using (var writer = File.Open(titlesFile, FileMode.Create, FileAccess.Write))
-            {
-                await unzipped.CopyToAsync(writer, cancellationToken).ConfigureAwait(false);
-            }
-        }
-
-        public string TitlesFilePath
-        {
-            get
-            {
-                Directory.CreateDirectory(Paths);
-
-                return Path.Combine(Paths, "titles.xml");
-            }
+            using var stream = await httpClient.GetStreamAsync(new Uri(TitlesUrl), cancellationToken).ConfigureAwait(false);
+            using var unzipped = new GZipStream(stream, CompressionMode.Decompress);
+            using var writer = File.Open(titlesFile, FileMode.Create, FileAccess.Write);
+            await unzipped.CopyToAsync(writer, cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
-        /// Get the FilePath
+        /// Downloads an xml file from AniDB which contains all of the titles for every anime, and their IDs,
+        /// and saves it to disk.
         /// </summary>
-        public static string TitlesFilePath_
+        /// <param name="titlesFile">The destination file name.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
+        private Task DownloadTitles(string titlesFile, CancellationToken cancellationToken)
         {
-            get
-            {
-                Directory.CreateDirectory(Paths);
-
-                return Path.Combine(Paths, "titles.xml");
-            }
+            _logger.LogDebug("Downloading new AniDB titles file.");
+            return DownloadTitlesStatic(titlesFile, cancellationToken);
         }
     }
 }

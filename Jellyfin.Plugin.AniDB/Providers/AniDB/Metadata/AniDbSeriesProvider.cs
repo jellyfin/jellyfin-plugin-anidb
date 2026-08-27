@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -11,7 +12,6 @@ using System.Threading.Tasks;
 using System.Xml;
 using System.Xml.Linq;
 using System.Xml.Serialization;
-using System.Net.Http;
 using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.AniDB.Configuration;
 using Jellyfin.Plugin.AniDB.Providers.AniDB.Identity;
@@ -24,7 +24,10 @@ using MediaBrowser.Model.Providers;
 
 namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
 {
-    public class AniDbSeriesProvider : IRemoteMetadataProvider<Series, SeriesInfo>, IHasOrder
+    /// <summary>
+    /// The AniDB metadata provider for series.
+    /// </summary>
+    public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, SeriesInfo>, IHasOrder
     {
         private const string SeriesDataFile = "series.xml";
         private const string SeriesQueryUrl = "http://api.anidb.net:9001/httpapi?request=anime&client={0}&clientver=1&protover=1&aid={1}";
@@ -41,62 +44,79 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             AutoReplenishment = true
         });
 
-        private static readonly int[] IgnoredTagIds = { 6, 22, 23, 60, 128, 129, 185, 216, 242, 255, 268, 269, 289 };
-        private static readonly Regex AniDbUrlRegex = new Regex(@"https?://anidb.net/\w+(/[0-9]+)? \[(?<name>[^\]]*)\]", RegexOptions.Compiled);
+        private static readonly int[] IgnoredTagIds = [6, 22, 23, 60, 128, 129, 185, 216, 242, 255, 268, 269, 289];
+        private static readonly Regex AniDbUrlRegex = MyRegex();
         private static readonly Regex _errorRegex = new(@"<error code=""[0-9]+"">[a-zA-Z]+</error>", RegexOptions.Compiled);
+        private static readonly CompositeFormat _seriesQueryUrlFormat = CompositeFormat.Parse(SeriesQueryUrl);
         private readonly IApplicationPaths _appPaths;
 
         private readonly Dictionary<string, PersonKind> _typeMappings = new()
         {
-            {"Direction", PersonKind.Director},
-            {"Music", PersonKind.Composer},
-            {"Chief Animation Direction", PersonKind.Director}
+            { "Direction", PersonKind.Director },
+            { "Music", PersonKind.Composer },
+            { "Chief Animation Direction", PersonKind.Director }
         };
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="AniDbSeriesProvider"/> class.
+        /// </summary>
+        /// <param name="appPaths">Instance of the <see cref="IApplicationPaths"/> interface.</param>
         public AniDbSeriesProvider(IApplicationPaths appPaths)
         {
             _appPaths = appPaths;
             TitleMatcher = AniDbTitleMatcher.DefaultInstance;
-            Current = this;
         }
 
-        private static AniDbSeriesProvider Current { get; set; }
-        private IAniDbTitleMatcher TitleMatcher { get; set; }
+        /// <inheritdoc />
         public int Order => -1;
+
+        /// <inheritdoc />
         public string Name => "AniDB";
 
+        private IAniDbTitleMatcher TitleMatcher { get; set; }
+
+        /// <inheritdoc />
         public async Task<MetadataResult<Series>> GetMetadata(SeriesInfo info, CancellationToken cancellationToken)
         {
             var animeId = info.ProviderIds.GetOrDefault(ProviderNames.AniDb);
 
             if (string.IsNullOrEmpty(animeId) && !string.IsNullOrEmpty(info.Name))
             {
-                animeId = await Equals_check.XmlFindId(info.Name, cancellationToken);
+                animeId = await Equals_check.XmlFindId(info.Name, cancellationToken).ConfigureAwait(false);
             }
 
             if (!string.IsNullOrEmpty(animeId))
             {
-                return await GetMetadataForId(animeId, info, cancellationToken);
+                return await GetMetadataForId(animeId, info, cancellationToken).ConfigureAwait(false);
             }
 
             return new MetadataResult<Series>();
         }
 
+        /// <summary>
+        /// Gets the metadata for the given AniDB id.
+        /// </summary>
+        /// <param name="animeId">The AniDB id.</param>
+        /// <param name="info">The series lookup info.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>The metadata result.</returns>
         public async Task<MetadataResult<Series>> GetMetadataForId(string animeId, SeriesInfo info, CancellationToken cancellationToken)
         {
-            var result = new MetadataResult<Series>();
-
-            result.Item = new Series();
-            result.HasMetadata = true;
+            var result = new MetadataResult<Series>
+            {
+                Item = new Series(),
+                HasMetadata = true
+            };
 
             result.Item.ProviderIds.Add(ProviderNames.AniDb, animeId);
 
-            var seriesDataPath = await GetSeriesData(_appPaths, animeId, cancellationToken);
+            var seriesDataPath = await GetSeriesData(_appPaths, animeId, cancellationToken).ConfigureAwait(false);
             await FetchSeriesInfo(result, seriesDataPath, info.MetadataLanguage ?? "en").ConfigureAwait(false);
 
             return result;
         }
 
+        /// <inheritdoc />
         public async Task<IEnumerable<RemoteSearchResult>> GetSearchResults(SeriesInfo searchInfo, CancellationToken cancellationToken)
         {
             var results = new List<RemoteSearchResult>();
@@ -104,12 +124,12 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
 
             if (!string.IsNullOrEmpty(animeId))
             {
-                var resultMetadata = await GetMetadataForId(animeId, searchInfo, cancellationToken);
+                var resultMetadata = await GetMetadataForId(animeId, searchInfo, cancellationToken).ConfigureAwait(false);
 
                 if (resultMetadata.HasMetadata)
                 {
                     var imageProvider = new AniDbImageProvider(_appPaths);
-                    var images = await imageProvider.GetImages(animeId, cancellationToken);
+                    var images = await imageProvider.GetImages(animeId, cancellationToken).ConfigureAwait(false);
                     results.Add(MetadataToRemoteSearchResult(resultMetadata, images));
                 }
             }
@@ -127,46 +147,68 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             return results;
         }
 
+        /// <summary>
+        /// Searches AniDB for series matching the given name.
+        /// </summary>
+        /// <param name="name">The name to search for.</param>
+        /// <param name="searchInfo">The series lookup info.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>The search results.</returns>
         public async Task<List<RemoteSearchResult>> GetSearchResultsByName(string name, SeriesInfo searchInfo, CancellationToken cancellationToken)
         {
             var imageProvider = new AniDbImageProvider(_appPaths);
             var results = new List<RemoteSearchResult>();
 
-            List<string> ids = await Equals_check.XmlSearch(name, cancellationToken);
+            List<string> ids = await Equals_check.XmlSearch(name, cancellationToken).ConfigureAwait(false);
 
             foreach (string id in ids)
             {
-                var resultMetadata = await GetMetadataForId(id, searchInfo, cancellationToken);
+                var resultMetadata = await GetMetadataForId(id, searchInfo, cancellationToken).ConfigureAwait(false);
 
                 if (resultMetadata.HasMetadata)
                 {
-                    var images = await imageProvider.GetImages(id, cancellationToken);
+                    var images = await imageProvider.GetImages(id, cancellationToken).ConfigureAwait(false);
                     results.Add(MetadataToRemoteSearchResult(resultMetadata, images));
                 }
             }
+
             return results;
         }
 
-        public RemoteSearchResult MetadataToRemoteSearchResult(MetadataResult<Series> metadata, IEnumerable<RemoteImageInfo> images)
+        /// <summary>
+        /// Converts a metadata result into a remote search result.
+        /// </summary>
+        /// <param name="metadata">The metadata result.</param>
+        /// <param name="images">The available images.</param>
+        /// <returns>The remote search result.</returns>
+        public static RemoteSearchResult MetadataToRemoteSearchResult(MetadataResult<Series> metadata, IEnumerable<RemoteImageInfo> images)
         {
             return new RemoteSearchResult
             {
                 Name = metadata.Item.Name,
                 ProductionYear = metadata.Item.PremiereDate?.Year,
                 PremiereDate = metadata.Item.PremiereDate,
-                ImageUrl = images.Any() ? images.First().Url : null,
+                ImageUrl = images.FirstOrDefault()?.Url,
                 ProviderIds = metadata.Item.ProviderIds,
                 SearchProviderName = ProviderNames.AniDb
             };
         }
 
+        /// <inheritdoc />
         public async Task<HttpResponseMessage> GetImageResponse(string url, CancellationToken cancellationToken)
         {
             var httpClient = Plugin.Instance.GetHttpClient();
 
-            return await httpClient.GetAsync(url).ConfigureAwait(false);
+            return await httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
         }
 
+        /// <summary>
+        /// Gets the path to the cached series data, downloading it when needed.
+        /// </summary>
+        /// <param name="appPaths">Instance of the <see cref="IApplicationPaths"/> interface.</param>
+        /// <param name="seriesId">The AniDB series id.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>The path to the series data file.</returns>
         public static async Task<string> GetSeriesData(IApplicationPaths appPaths, string seriesId, CancellationToken cancellationToken)
         {
             var dataPath = GetSeriesDataPath(appPaths, seriesId);
@@ -255,6 +297,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
                                             ? title.Replace('`', '\'')
                                             : title;
                                     }
+
                                     if (!string.IsNullOrEmpty(originalTitle))
                                     {
                                         series.OriginalTitle = Plugin.Instance.Configuration.AniDbReplaceGraves
@@ -328,7 +371,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             GenreHelper.CleanupGenres(series);
         }
 
-        private async Task ParseEpisodes(Series series, XmlReader reader)
+        private static async Task ParseEpisodes(Series series, XmlReader reader)
         {
             while (await reader.ReadAsync().ConfigureAwait(false))
             {
@@ -339,23 +382,21 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
                         continue;
                     }
 
-                    using (var episodeSubtree = reader.ReadSubtree())
+                    using var episodeSubtree = reader.ReadSubtree();
+                    while (await episodeSubtree.ReadAsync().ConfigureAwait(false))
                     {
-                        while (await episodeSubtree.ReadAsync().ConfigureAwait(false))
+                        if (episodeSubtree.NodeType == XmlNodeType.Element)
                         {
-                            if (episodeSubtree.NodeType == XmlNodeType.Element)
+                            switch (episodeSubtree.Name)
                             {
-                                switch (episodeSubtree.Name)
-                                {
-                                    case "epno":
-                                        //var epno = episodeSubtree.ReadElementContentAsString();
-                                        //EpisodeInfo info = new EpisodeInfo();
-                                        //info.AnimeSeriesIndex = series.AnimeSeriesIndex;
-                                        //info.IndexNumberEnd = string(epno);
-                                        //info.SeriesProviderIds.GetOrDefault(ProviderNames.AniDb);
-                                        //episodes.Add(info);
-                                        break;
-                                }
+                                case "epno":
+                                    // var epno = episodeSubtree.ReadElementContentAsString();
+                                    // EpisodeInfo info = new EpisodeInfo();
+                                    // info.AnimeSeriesIndex = series.AnimeSeriesIndex;
+                                    // info.IndexNumberEnd = string(epno);
+                                    // info.SeriesProviderIds.GetOrDefault(ProviderNames.AniDb);
+                                    // episodes.Add(info);
+                                    break;
                             }
                         }
                     }
@@ -363,7 +404,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             }
         }
 
-        private async Task ParseTags(Series series, XmlReader reader)
+        private static async Task ParseTags(Series series, XmlReader reader)
         {
             var genres = new List<GenreInfo>();
 
@@ -387,31 +428,30 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
                         continue;
                     }
 
-                    using (var tagSubtree = reader.ReadSubtree())
+                    using var tagSubtree = reader.ReadSubtree();
+                    while (await tagSubtree.ReadAsync().ConfigureAwait(false))
                     {
-                        while (await tagSubtree.ReadAsync().ConfigureAwait(false))
+                        if (tagSubtree.NodeType == XmlNodeType.Element && tagSubtree.Name == "name")
                         {
-                            if (tagSubtree.NodeType == XmlNodeType.Element && tagSubtree.Name == "name")
+                            var name = await tagSubtree.ReadElementContentAsStringAsync().ConfigureAwait(false);
+                            if (name == "18 restricted")
                             {
-                                var name = await tagSubtree.ReadElementContentAsStringAsync().ConfigureAwait(false);
-                                if (name == "18 restricted")
-                                {
-                                    series.OfficialRating = "XXX";
-                                }
-                                if (weight >= 400)
-                                {
-                                    genres.Add(new GenreInfo { Name = name, Weight = weight });
-                                }
+                                series.OfficialRating = "XXX";
+                            }
+
+                            if (weight >= 400)
+                            {
+                                genres.Add(new GenreInfo { Name = name, Weight = weight });
                             }
                         }
                     }
                 }
             }
 
-            series.Genres = genres.OrderBy(g => g.Weight).Select(g => g.Name).ToArray();
+            series.Genres = [.. genres.OrderBy(g => g.Weight).Select(g => g.Name)];
         }
 
-        private async Task ParseResources(Series series, XmlReader reader)
+        private static async Task ParseResources(Series series, XmlReader reader)
         {
             while (await reader.ReadAsync().ConfigureAwait(false))
             {
@@ -421,7 +461,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
                     switch (type)
                     {
                         case "4":
-                            while (reader.Read())
+                            while (await reader.ReadAsync().ConfigureAwait(false))
                             {
                                 if (reader.NodeType == XmlNodeType.Element && reader.Name == "url")
                                 {
@@ -429,20 +469,26 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
                                     break;
                                 }
                             }
+
                             break;
                     }
                 }
             }
         }
 
-        private string StripAniDbLinks(string text)
+        private static string StripAniDbLinks(string text)
         {
             return AniDbUrlRegex.Replace(text, "${name}");
         }
 
+        /// <summary>
+        /// Replaces new lines with HTML line breaks.
+        /// </summary>
+        /// <param name="text">The text to transform.</param>
+        /// <returns>The transformed text.</returns>
         public static string ReplaceNewLine(string text)
         {
-            return text.Replace("\n", "<br>");
+            return text.Replace("\n", "<br>", StringComparison.Ordinal);
         }
 
         private async Task ParseActors(MetadataResult<Series> series, XmlReader reader)
@@ -453,10 +499,8 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
                 {
                     if (reader.Name == "character")
                     {
-                        using (var subtree = reader.ReadSubtree())
-                        {
-                            await ParseActor(series, subtree).ConfigureAwait(false);
-                        }
+                        using var subtree = reader.ReadSubtree();
+                        await ParseActor(series, subtree).ConfigureAwait(false);
                     }
                 }
             }
@@ -464,8 +508,8 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
 
         private async Task ParseActor(MetadataResult<Series> series, XmlReader reader)
         {
-            string name = null;
-            string role = null;
+            string? name = null;
+            string? role = null;
 
             while (await reader.ReadAsync().ConfigureAwait(false))
             {
@@ -488,11 +532,12 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             {
                 series.AddPerson(CreatePerson(
                     Plugin.Instance.Configuration.AniDbReplaceGraves ? name.Replace('`', '\'') : name,
-                    PersonType.Actor, role));
+                    PersonType.Actor,
+                    role));
             }
         }
 
-        private void ParseRatings(Series series, XmlReader reader)
+        private static void ParseRatings(Series series, XmlReader reader)
         {
             while (reader.Read())
             {
@@ -513,7 +558,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             }
         }
 
-        private async Task<(string, string)> ParseTitle(XmlReader reader, string preferredMetadataLangauge)
+        private static async Task<(string? Title, string? OriginalTitle)> ParseTitle(XmlReader reader, string preferredMetadataLangauge)
         {
             var titles = new List<Title>();
 
@@ -534,8 +579,8 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
                 }
             }
 
-            string title = titles.Localize(Plugin.Instance.Configuration.TitlePreference, preferredMetadataLangauge).Name;
-            string originalTitle = titles.Localize(Plugin.Instance.Configuration.OriginalTitlePreference, preferredMetadataLangauge).Name;
+            string? title = titles.Localize(Plugin.Instance.Configuration.TitlePreference, preferredMetadataLangauge)?.Name;
+            string? originalTitle = titles.Localize(Plugin.Instance.Configuration.OriginalTitlePreference, preferredMetadataLangauge)?.Name;
 
             return (title, originalTitle);
         }
@@ -562,13 +607,13 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             }
         }
 
-        private PersonInfo CreatePerson(string name, string type, string role = null)
+        private PersonInfo CreatePerson(string name, string? type, string? role = null)
         {
             // todo find nationality of person and conditionally reverse name order
 
             if (!Enum.TryParse(type, out PersonKind personKind))
             {
-                personKind = _typeMappings.GetValueOrDefault(type, PersonKind.Actor);
+                personKind = type is null ? PersonKind.Actor : _typeMappings.GetValueOrDefault(type, PersonKind.Actor);
             }
 
             return new PersonInfo
@@ -579,6 +624,11 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             };
         }
 
+        /// <summary>
+        /// Reverses the order of the parts of a name.
+        /// </summary>
+        /// <param name="name">The name to reverse.</param>
+        /// <returns>The reversed name.</returns>
         public static string ReverseNameOrder(string name)
         {
             return name.Split(' ').Reverse().Aggregate(string.Empty, (n, part) => n + " " + part).Trim();
@@ -587,31 +637,32 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
         private static async Task DownloadSeriesData(string aid, string seriesDataPath, string cachePath, CancellationToken cancellationToken)
         {
             var directory = Path.GetDirectoryName(seriesDataPath);
-            if (directory != null)
+            if (string.IsNullOrEmpty(directory))
             {
-                Directory.CreateDirectory(directory);
+                throw new ArgumentException("The series data path does not contain a directory.", nameof(seriesDataPath));
             }
 
+            Directory.CreateDirectory(directory);
             DeleteXmlFiles(directory);
 
             var httpClient = Plugin.Instance.GetHttpClient();
-            var url = string.Format(SeriesQueryUrl, ClientName, aid);
+            var url = string.Format(CultureInfo.InvariantCulture, _seriesQueryUrlFormat, ClientName, aid);
 
             await WaitForRequestSlot(cancellationToken).ConfigureAwait(false);
 
-            using (var response = await httpClient.GetAsync(url).ConfigureAwait(false))
-            using (var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false))
+            using (var response = await httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false))
+            using (var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false))
             using (var reader = new StreamReader(stream, Encoding.UTF8, true))
             using (var file = File.Open(seriesDataPath, FileMode.Create, FileAccess.Write))
             using (var writer = new StreamWriter(file))
             {
-                var text = await reader.ReadToEndAsync().ConfigureAwait(false);
-                text = text.Replace("&#x0;", "");
+                var text = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+                text = text.Replace("&#x0;", string.Empty, StringComparison.Ordinal);
 
                 var errorRegexMatch = _errorRegex.Match(text);
                 if (errorRegexMatch.Success)
                 {
-                    throw new Exception("AniDB API error " + errorRegexMatch.Value);
+                    throw new InvalidOperationException("AniDB API error " + errorRegexMatch.Value);
                 }
 
                 await writer.WriteAsync(text).ConfigureAwait(false);
@@ -648,24 +699,20 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
                 ValidationType = ValidationType.None
             };
 
-            using (var streamReader = new StreamReader(seriesDataPath, Encoding.UTF8))
-            {
-                // Use XmlReader for best performance
-                using (var reader = XmlReader.Create(streamReader, settings))
-                {
-                    await reader.MoveToContentAsync().ConfigureAwait(false);
+            using var streamReader = new StreamReader(seriesDataPath, Encoding.UTF8);
+            // Use XmlReader for best performance
+            using var reader = XmlReader.Create(streamReader, settings);
+            await reader.MoveToContentAsync().ConfigureAwait(false);
 
-                    // Loop through each element
-                    while (await reader.ReadAsync().ConfigureAwait(false))
+            // Loop through each element
+            while (await reader.ReadAsync().ConfigureAwait(false))
+            {
+                if (reader.NodeType == XmlNodeType.Element)
+                {
+                    if (reader.Name == "episode")
                     {
-                        if (reader.NodeType == XmlNodeType.Element)
-                        {
-                            if (reader.Name == "episode")
-                            {
-                                var outerXml = await reader.ReadOuterXmlAsync().ConfigureAwait(false);
-                                await SaveEpsiodeXml(seriesDataDirectory, outerXml).ConfigureAwait(false);
-                            }
-                        }
+                        var outerXml = await reader.ReadOuterXmlAsync().ConfigureAwait(false);
+                        await SaveEpsiodeXml(seriesDataDirectory, outerXml).ConfigureAwait(false);
                     }
                 }
             }
@@ -687,24 +734,22 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             using (var streamReader = new StreamReader(seriesDataPath, Encoding.UTF8))
             {
                 // Use XmlReader for best performance
-                using (var reader = XmlReader.Create(streamReader, settings))
+                using var reader = XmlReader.Create(streamReader, settings);
+                await reader.MoveToContentAsync().ConfigureAwait(false);
+
+                // Loop through each element
+                while (await reader.ReadAsync().ConfigureAwait(false))
                 {
-                    await reader.MoveToContentAsync().ConfigureAwait(false);
-
-                    // Loop through each element
-                    while (await reader.ReadAsync().ConfigureAwait(false))
+                    if (reader.NodeType == XmlNodeType.Element && reader.Name == "characters")
                     {
-                        if (reader.NodeType == XmlNodeType.Element && reader.Name == "characters")
-                        {
-                            var outerXml = await reader.ReadOuterXmlAsync().ConfigureAwait(false);
-                            cast.AddRange(ParseCharacterList(outerXml));
-                        }
+                        var outerXml = await reader.ReadOuterXmlAsync().ConfigureAwait(false);
+                        cast.AddRange(ParseCharacterList(outerXml));
+                    }
 
-                        if (reader.NodeType == XmlNodeType.Element && reader.Name == "creators")
-                        {
-                            var outerXml = await reader.ReadOuterXmlAsync().ConfigureAwait(false);
-                            cast.AddRange(ParseCreatorsList(outerXml));
-                        }
+                    if (reader.NodeType == XmlNodeType.Element && reader.Name == "creators")
+                    {
+                        var outerXml = await reader.ReadOuterXmlAsync().ConfigureAwait(false);
+                        cast.AddRange(ParseCreatorsList(outerXml));
                     }
                 }
             }
@@ -712,18 +757,24 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             var serializer = new XmlSerializer(typeof(AniDbPersonInfo));
             foreach (var person in cast)
             {
+                if (string.IsNullOrEmpty(person.Name))
+                {
+                    continue;
+                }
+
                 var path = GetCastPath(person.Name, cachePath);
                 var directory = Path.GetDirectoryName(path);
-                Directory.CreateDirectory(directory);
+                if (!string.IsNullOrEmpty(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
 
                 if (!File.Exists(path) || person.Image != null)
                 {
                     try
                     {
-                        using (var stream = File.Open(path, FileMode.Create))
-                        {
-                            serializer.Serialize(stream, person);
-                        }
+                        using var stream = File.Open(path, FileMode.Create);
+                        serializer.Serialize(stream, person);
                     }
                     catch (IOException)
                     {
@@ -733,7 +784,13 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             }
         }
 
-        public static AniDbPersonInfo GetPersonInfo(string cachePath, string name)
+        /// <summary>
+        /// Gets the cached information about a person.
+        /// </summary>
+        /// <param name="cachePath">The cache path.</param>
+        /// <param name="name">The name of the person.</param>
+        /// <returns>The cached person info, or <c>null</c> when it is not cached.</returns>
+        public static AniDbPersonInfo? GetPersonInfo(string cachePath, string name)
         {
             var path = GetCastPath(name, cachePath);
             var serializer = new XmlSerializer(typeof(AniDbPersonInfo));
@@ -742,10 +799,15 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             {
                 if (File.Exists(path))
                 {
-                    using (var stream = File.OpenRead(path))
+                    var readerSettings = new XmlReaderSettings
                     {
-                        return serializer.Deserialize(stream) as AniDbPersonInfo;
-                    }
+                        DtdProcessing = DtdProcessing.Prohibit,
+                        XmlResolver = null
+                    };
+
+                    using var stream = File.OpenRead(path);
+                    using var reader = XmlReader.Create(stream, readerSettings);
+                    return serializer.Deserialize(reader) as AniDbPersonInfo;
                 }
             }
             catch (IOException)
@@ -842,10 +904,8 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
                 Async = true
             };
 
-            using (var writer = XmlWriter.Create(filename, writerSettings))
-            {
-                await writer.WriteRawAsync(xml).ConfigureAwait(false);
-            }
+            using var writer = XmlWriter.Create(filename, writerSettings);
+            await writer.WriteRawAsync(xml).ConfigureAwait(false);
         }
 
         private static async Task SaveEpsiodeXml(string seriesDataDirectory, string xml)
@@ -854,12 +914,12 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
 
             if (episodeNumber != null)
             {
-                var file = Path.Combine(seriesDataDirectory, string.Format("episode-{0}.xml", episodeNumber));
-                await SaveXml(xml, file);
+                var file = Path.Combine(seriesDataDirectory, FormattableString.Invariant($"episode-{episodeNumber}.xml"));
+                await SaveXml(xml, file).ConfigureAwait(false);
             }
         }
 
-        private static async Task<string> ParseEpisodeNumber(string xml)
+        private static async Task<string?> ParseEpisodeNumber(string xml)
         {
             var settings = new XmlReaderSettings
             {
@@ -870,31 +930,27 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
                 ValidationType = ValidationType.None
             };
 
-            using (var streamReader = new StringReader(xml))
-            {
-                // Use XmlReader for best performance
-                using (var reader = XmlReader.Create(streamReader, settings))
-                {
-                    reader.MoveToContent();
+            using var streamReader = new StringReader(xml);
+            // Use XmlReader for best performance
+            using var reader = XmlReader.Create(streamReader, settings);
+            await reader.MoveToContentAsync().ConfigureAwait(false);
 
-                    // Loop through each element
-                    while (await reader.ReadAsync().ConfigureAwait(false))
+            // Loop through each element
+            while (await reader.ReadAsync().ConfigureAwait(false))
+            {
+                if (reader.NodeType == XmlNodeType.Element)
+                {
+                    if (reader.Name == "epno")
                     {
-                        if (reader.NodeType == XmlNodeType.Element)
+                        var val = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
+                        if (!string.IsNullOrWhiteSpace(val))
                         {
-                            if (reader.Name == "epno")
-                            {
-                                var val = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
-                                if (!string.IsNullOrWhiteSpace(val))
-                                {
-                                    return val;
-                                }
-                            }
-                            else
-                            {
-                                await reader.SkipAsync().ConfigureAwait(false);
-                            }
+                            return val;
                         }
+                    }
+                    else
+                    {
+                        await reader.SkipAsync().ConfigureAwait(false);
                     }
                 }
             }
@@ -913,56 +969,13 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             return Path.Combine(appPaths.CachePath, "anidb", "series", seriesId);
         }
 
+        [GeneratedRegex(@"https?://anidb.net/\w+(/[0-9]+)? \[(?<name>[^\]]*)\]", RegexOptions.Compiled)]
+        private static partial Regex MyRegex();
+
         private struct GenreInfo
         {
             public string Name;
             public int Weight;
-        }
-    }
-
-    public class Title
-    {
-        public string Language { get; set; }
-        public string Type { get; set; }
-        public string Name { get; set; }
-    }
-
-    public static class TitleExtensions
-    {
-        public static Title Localize(this IEnumerable<Title> titles, TitlePreferenceType preference, string metadataLanguage)
-        {
-            var titlesList = titles as IList<Title> ?? titles.ToList();
-
-            if (preference == TitlePreferenceType.Localized)
-            {
-                // prefer an official title, else look for a synonym
-                var localized = titlesList.FirstOrDefault(t => t.Language == metadataLanguage && t.Type == "main") ??
-                                titlesList.FirstOrDefault(t => t.Language == metadataLanguage && t.Type == "official") ??
-                                titlesList.FirstOrDefault(t => t.Language == metadataLanguage && t.Type == "synonym");
-
-                if (localized != null)
-                {
-                    return localized;
-                }
-            }
-
-            if (preference == TitlePreferenceType.Japanese)
-            {
-                // prefer an official title, else look for a synonym
-                var japanese = titlesList.FirstOrDefault(t => t.Language == "ja" && t.Type == "main") ??
-                               titlesList.FirstOrDefault(t => t.Language == "ja" && t.Type == "official") ??
-                               titlesList.FirstOrDefault(t => t.Language == "ja" && t.Type == "synonym");
-
-                if (japanese != null)
-                {
-                    return japanese;
-                }
-            }
-
-            // return the main title (romaji)
-            return titlesList.FirstOrDefault(t => t.Language == "x-jat" && t.Type == "main") ??
-                   titlesList.FirstOrDefault(t => t.Type == "main") ??
-                   titlesList.FirstOrDefault();
         }
     }
 }

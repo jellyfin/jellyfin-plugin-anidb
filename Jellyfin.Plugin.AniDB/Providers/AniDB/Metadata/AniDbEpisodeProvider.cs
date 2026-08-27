@@ -1,9 +1,9 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
-using System.Net.Http;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Xml;
@@ -17,22 +17,18 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
     /// <summary>
     /// The <see cref="AniDbEpisodeProvider" /> class provides episode metadata from AniDB.
     /// </summary>
-    public class AniDbEpisodeProvider : IRemoteMetadataProvider<Episode, EpisodeInfo>
+    /// <remarks>
+    /// Creates a new instance of the <see cref="AniDbEpisodeProvider" /> class.
+    /// </remarks>
+    /// <param name="configurationManager">The configuration manager.</param>
+    public class AniDbEpisodeProvider(IServerConfigurationManager configurationManager) : IRemoteMetadataProvider<Episode, EpisodeInfo>
     {
-        private readonly IServerConfigurationManager _configurationManager;
+        private readonly IServerConfigurationManager _configurationManager = configurationManager;
 
-        /// <summary>
-        /// Creates a new instance of the <see cref="AniDbEpisodeProvider" /> class.
-        /// </summary>
-        /// <param name="configurationManager">The configuration manager.</param>
-        /// <param name="httpClient">The HTTP client.</param>
-        public AniDbEpisodeProvider(IServerConfigurationManager configurationManager)
-        {
-            _configurationManager = configurationManager;
-        }
-
+        /// <inheritdoc />
         public string Name => "AniDB";
 
+        /// <inheritdoc />
         public async Task<MetadataResult<Episode>> GetMetadata(EpisodeInfo info, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -44,7 +40,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
                 return result;
             }
 
-            var seriesFolder = await FindSeriesFolder(animeId, cancellationToken);
+            var seriesFolder = await FindSeriesFolder(animeId, cancellationToken).ConfigureAwait(false);
             if (string.IsNullOrEmpty(seriesFolder))
             {
                 return result;
@@ -81,18 +77,19 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             return result;
         }
 
+        /// <inheritdoc />
         public async Task<IEnumerable<RemoteSearchResult>> GetSearchResults(EpisodeInfo searchInfo, CancellationToken cancellationToken)
         {
             if (!searchInfo.IndexNumber.HasValue)
             {
-                return Enumerable.Empty<RemoteSearchResult>();
+                return [];
             }
 
             var metadataResult = await GetMetadata(searchInfo, cancellationToken).ConfigureAwait(false);
 
             if (!metadataResult.HasMetadata)
             {
-                return Enumerable.Empty<RemoteSearchResult>();
+                return [];
             }
 
             var item = metadataResult.Item;
@@ -113,19 +110,20 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             };
         }
 
+        /// <inheritdoc />
         public Task<HttpResponseMessage> GetImageResponse(string url, CancellationToken cancellationToken)
         {
             var imageProvider = new AniDbImageProvider(_configurationManager.ApplicationPaths);
             return imageProvider.GetImageResponse(url, cancellationToken);
         }
 
-        private async Task<string> FindSeriesFolder(string seriesId, CancellationToken cancellationToken)
+        private async Task<string?> FindSeriesFolder(string seriesId, CancellationToken cancellationToken)
         {
             var seriesDataPath = await AniDbSeriesProvider.GetSeriesData(_configurationManager.ApplicationPaths, seriesId, cancellationToken).ConfigureAwait(false);
             return Path.GetDirectoryName(seriesDataPath);
         }
 
-        private async Task ParseEpisodeXml(FileInfo xml, Episode episode, string preferredMetadataLanguage)
+        private static async Task ParseEpisodeXml(FileInfo xml, Episode episode, string preferredMetadataLanguage)
         {
             var settings = new XmlReaderSettings
             {
@@ -136,104 +134,100 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
                 ValidationType = ValidationType.None
             };
 
-            using (var streamReader = xml.OpenText())
-            using (var reader = XmlReader.Create(streamReader, settings))
+            using var streamReader = xml.OpenText();
+            using var reader = XmlReader.Create(streamReader, settings);
+            var titles = new List<Title>();
+
+            while (await reader.ReadAsync().ConfigureAwait(false))
             {
-                var titles = new List<Title>();
-
-                while (await reader.ReadAsync().ConfigureAwait(false))
+                if (reader.NodeType == XmlNodeType.Element)
                 {
-                    if (reader.NodeType == XmlNodeType.Element)
+                    switch (reader.Name)
                     {
-                        switch (reader.Name)
-                        {
-                            case "episode":
-                                var episodeId = reader.GetAttribute("id");
-                                if (!string.IsNullOrEmpty(episodeId))
+                        case "episode":
+                            var episodeId = reader.GetAttribute("id");
+                            if (!string.IsNullOrEmpty(episodeId))
+                            {
+                                episode.ProviderIds.Add(ProviderNames.AniDb, episodeId);
+                            }
+
+                            break;
+
+                        case "length":
+                            var length = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
+                            if (!string.IsNullOrEmpty(length))
+                            {
+                                if (long.TryParse(length, out var duration))
                                 {
-                                    episode.ProviderIds.Add(ProviderNames.AniDb, episodeId);
+                                    episode.RunTimeTicks = TimeSpan.FromMinutes(duration).Ticks;
                                 }
+                            }
 
-                                break;
+                            break;
 
-                            case "length":
-                                var length = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
-                                if (!string.IsNullOrEmpty(length))
+                        case "airdate":
+                            var airdate = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
+                            if (!string.IsNullOrEmpty(airdate))
+                            {
+                                if (DateTime.TryParse(airdate, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal, out var date))
                                 {
-                                    long duration;
-                                    if (long.TryParse(length, out duration))
-                                    {
-                                        episode.RunTimeTicks = TimeSpan.FromMinutes(duration).Ticks;
-                                    }
+                                    episode.PremiereDate = date;
                                 }
+                            }
 
-                                break;
+                            break;
 
-                            case "airdate":
-                                var airdate = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
-                                if (!string.IsNullOrEmpty(airdate))
-                                {
-                                    DateTime date;
-                                    if (DateTime.TryParse(airdate, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal, out date))
-                                    {
-                                        episode.PremiereDate = date;
-                                    }
-                                }
-
-                                break;
-
-                            case "rating":
-                                int votes;
-                                float rating;
-                                if (int.TryParse(reader.GetAttribute("votes"), NumberStyles.Any, CultureInfo.InvariantCulture, out votes) &&
-                                    float.TryParse(reader.ReadElementContentAsString(), NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out rating))
+                        case "rating":
+                            if (int.TryParse(reader.GetAttribute("votes"), NumberStyles.Any, CultureInfo.InvariantCulture, out _))
+                            {
+                                var ratingText = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
+                                if (float.TryParse(ratingText, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var rating))
                                 {
                                     episode.CommunityRating = rating;
                                 }
+                            }
 
-                                break;
+                            break;
 
-                            case "title":
-                                var language = reader.GetAttribute("xml:lang");
-                                var name = reader.ReadElementContentAsString();
+                        case "title":
+                            var language = reader.GetAttribute("xml:lang");
+                            var name = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
 
-                                titles.Add(new Title
-                                {
-                                    Language = language,
-                                    Type = "main",
-                                    Name = name
-                                });
+                            titles.Add(new Title
+                            {
+                                Language = language,
+                                Type = "main",
+                                Name = name
+                            });
 
-                                break;
+                            break;
 
-                            case "summary":
-                                var overview = AniDbSeriesProvider.ReplaceNewLine(reader.ReadElementContentAsString());
-                                episode.Overview = Plugin.Instance.Configuration.AniDbReplaceGraves ? overview.Replace('`', '\'') : overview;
+                        case "summary":
+                            var overview = AniDbSeriesProvider.ReplaceNewLine(await reader.ReadElementContentAsStringAsync().ConfigureAwait(false));
+                            episode.Overview = Plugin.Instance.Configuration.AniDbReplaceGraves ? overview.Replace('`', '\'') : overview;
 
-                                break;
-                        }
+                            break;
                     }
                 }
+            }
 
-                var title = titles.Localize(Configuration.TitlePreferenceType.Localized, preferredMetadataLanguage).Name;
-                if (!string.IsNullOrEmpty(title))
-                {
-                    episode.Name = Plugin.Instance.Configuration.AniDbReplaceGraves
-                        ? title.Replace('`', '\'')
-                        : title;
-                }
+            var title = titles.Localize(Configuration.TitlePreferenceType.Localized, preferredMetadataLanguage)?.Name;
+            if (!string.IsNullOrEmpty(title))
+            {
+                episode.Name = Plugin.Instance.Configuration.AniDbReplaceGraves
+                    ? title.Replace('`', '\'')
+                    : title;
             }
         }
 
-        private FileInfo GetEpisodeXmlFile(int? episodeNumber, string type, string seriesDataPath)
+        private static FileInfo? GetEpisodeXmlFile(int? episodeNumber, string type, string seriesDataPath)
         {
             if (episodeNumber == null)
             {
                 return null;
             }
 
-            const string nameFormat = "episode-{0}.xml";
-            var filename = Path.Combine(seriesDataPath, string.Format(nameFormat, (type ?? "") + episodeNumber.Value));
+            var filename = Path.Combine(seriesDataPath, FormattableString.Invariant($"episode-{(type ?? string.Empty) + episodeNumber.Value}.xml"));
             return new FileInfo(filename);
         }
     }

@@ -1,4 +1,4 @@
-﻿using System.Threading;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Identity
@@ -9,15 +9,15 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Identity
     public interface IAniDbTitleDownloader
     {
         /// <summary>
+        /// Gets the path to the titles.xml file.
+        /// </summary>
+        string TitlesFilePath { get; }
+
+        /// <summary>
         /// Downloads titles and stores them in an XML file at TitlesFilePath.
         /// </summary>
         /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
         Task Load(CancellationToken cancellationToken);
-
-        /// <summary>
-        /// Gets the path to the titles.xml file.
-        /// </summary>
-        /// <returns>The path to the titles.xml file.</returns>
-        string TitlesFilePath { get; }
     }
 }

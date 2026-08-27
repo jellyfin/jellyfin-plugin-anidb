@@ -1,4 +1,4 @@
-﻿using System.Threading;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Identity
@@ -14,6 +14,6 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Identity
         /// <param name="title">The title of the series to search for.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
         /// <returns>The AniDB ID of the series is found; else <c>null</c>.</returns>
-        Task<string> FindSeries(string title, CancellationToken cancellationToken);
+        Task<string?> FindSeries(string title, CancellationToken cancellationToken);
     }
 }
