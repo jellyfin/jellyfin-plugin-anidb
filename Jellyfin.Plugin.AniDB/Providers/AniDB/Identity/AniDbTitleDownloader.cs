@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.IO.Compression;
 using System.Net.Http;
@@ -57,7 +57,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Identity
             // download titles if we do not already have them, or have not updated for a week
             if (!titlesFileInfo.Exists || (DateTime.UtcNow - titlesFileInfo.LastWriteTimeUtc).TotalDays > 7)
             {
-                await DownloadTitles_static(titlesFile).ConfigureAwait(false);
+                await DownloadTitles_static(titlesFile, cancellationToken).ConfigureAwait(false);
             }
         }
 
@@ -69,7 +69,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Identity
             // download titles if we do not already have them, or have not updated for a week
             if (!titlesFileInfo.Exists || (DateTime.UtcNow - titlesFileInfo.LastWriteTimeUtc).TotalDays > 7)
             {
-                await DownloadTitles(titlesFile).ConfigureAwait(false);
+                await DownloadTitles(titlesFile, cancellationToken).ConfigureAwait(false);
             }
         }
 
@@ -78,10 +78,10 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Identity
         /// and saves it to disk.
         /// </summary>
         /// <param name="titlesFile">The destination file name.</param>
-        private Task DownloadTitles(string titlesFile)
+        private Task DownloadTitles(string titlesFile, CancellationToken cancellationToken)
         {
             _logger.LogDebug("Downloading new AniDB titles file.");
-            return DownloadTitles_static(titlesFile);
+            return DownloadTitles_static(titlesFile, cancellationToken);
         }
 
         /// <summary>
@@ -90,16 +90,15 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Identity
         /// </summary>
         /// <param name="titlesFile"></param>
         /// <returns></returns>
-        private static async Task DownloadTitles_static(string titlesFile)
+        private static async Task DownloadTitles_static(string titlesFile, CancellationToken cancellationToken)
         {
             var httpClient = Plugin.Instance.GetHttpClient();
-            await AniDbSeriesProvider.RequestLimiter.Tick().ConfigureAwait(false);
-            await Task.Delay(Plugin.Instance.Configuration.AniDbRateLimit).ConfigureAwait(false);
-            using (var stream = await httpClient.GetStreamAsync(TitlesUrl).ConfigureAwait(false))
+            await AniDbSeriesProvider.WaitForRequestSlot(cancellationToken).ConfigureAwait(false);
+            using (var stream = await httpClient.GetStreamAsync(TitlesUrl, cancellationToken).ConfigureAwait(false))
             using (var unzipped = new GZipStream(stream, CompressionMode.Decompress))
             using (var writer = File.Open(titlesFile, FileMode.Create, FileAccess.Write))
             {
-                await unzipped.CopyToAsync(writer).ConfigureAwait(false);
+                await unzipped.CopyToAsync(writer, cancellationToken).ConfigureAwait(false);
             }
         }
 
