@@ -51,10 +51,10 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
     public static Plugin Instance { get; private set; } = null!;
 
     /// <inheritdoc />
-    public override string Name => Constants.PluginName;
+    public override string Name => "AniDB";
 
     /// <inheritdoc />
-    public override Guid Id => Guid.Parse(Constants.PluginGuid);
+    public override Guid Id => Guid.Parse("a2b2a7ed-aa28-4521-a64a-63d86901f246");
 
     /// <summary>
     /// Creates an <see cref="HttpClient"/> configured with the plugin user agent.
