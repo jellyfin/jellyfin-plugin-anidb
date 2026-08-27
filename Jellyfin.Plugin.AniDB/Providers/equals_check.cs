@@ -119,36 +119,9 @@ internal static partial class Equals_check
     /// <returns>A <see cref="Task"/> representing the asynchronous operation, containing the matching AniDB IDs.</returns>
     public static async Task<List<string>> XmlSearch(string name, CancellationToken cancellationToken, int x_ = 0)
     {
-        var results = new List<string>();
+        string? xml = await ReadTitlesXml(x_, cancellationToken).ConfigureAwait(false);
 
-        try
-        {
-            string xml = await File.ReadAllTextAsync(GetAnidbXml(), cancellationToken).ConfigureAwait(false);
-            string s = "-";
-            int x = 0;
-            string strippedName = StripYearRegex().Replace(name, string.Empty);
-            Regex searchRegex = new Regex(@"<anime aid=""([0-9]+)"">(?>[^<>]+|<(?!\/anime>)[^<>]*>)*?.*" + FuzzyRegexEscape(ShortenString(strippedName, 6, 20)), RegexOptions.IgnoreCase | RegexOptions.Compiled);
-            while (!string.IsNullOrEmpty(s))
-            {
-                s = OneLineRegex(searchRegex, xml, 1, x);
-                if (!string.IsNullOrEmpty(s))
-                {
-                    results.Add(s);
-                }
-
-                x++;
-            }
-        }
-        catch (Exception)
-        {
-            if (x_ == 0)
-            {
-                await Task.Run(() => AniDbTitleDownloader.LoadStatic(cancellationToken), cancellationToken).ConfigureAwait(false);
-                return await XmlSearch(name, cancellationToken, 1).ConfigureAwait(false);
-            }
-        }
-
-        return results;
+        return xml is null ? [] : SearchTitlesXml(xml, name);
     }
 
     /// <summary>
@@ -160,14 +133,21 @@ internal static partial class Equals_check
     /// <returns>A <see cref="Task"/> representing the asynchronous operation, containing the best matching AniDB ID.</returns>
     public static async Task<string> XmlFindId(string name, CancellationToken cancellationToken, int x_ = 0)
     {
-        var results = await XmlSearch(name, cancellationToken).ConfigureAwait(false);
+        // Read the titles file once and reuse it for both the search and the comparison
+        // below; it is several megabytes, and this used to read it twice per lookup.
+        string? xml = await ReadTitlesXml(x_, cancellationToken).ConfigureAwait(false);
+        if (xml is null)
+        {
+            return string.Empty;
+        }
+
+        var results = SearchTitlesXml(xml, name);
 
         if (results.Count == 1)
         {
             return results[0];
         }
 
-        string xml = await File.ReadAllTextAsync(GetAnidbXml(), cancellationToken).ConfigureAwait(false);
         int lowestDistance = Plugin.Instance.Configuration.TitleSimilarityThreshold;
         string currentId = string.Empty;
 
@@ -257,6 +237,65 @@ internal static partial class Equals_check
         }
 
         return matrix[str1Length][str2Length];
+    }
+
+    /// <summary>
+    /// Reads the AniDB titles file, downloading it once if it cannot be read.
+    /// </summary>
+    /// <param name="attempt">The current attempt; the file is downloaded only on the first.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The file contents, or <see langword="null"/> when it could not be read.</returns>
+    private static async Task<string?> ReadTitlesXml(int attempt, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await File.ReadAllTextAsync(GetAnidbXml(), cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            if (attempt != 0)
+            {
+                return null;
+            }
+        }
+
+        await Task.Run(() => AniDbTitleDownloader.LoadStatic(cancellationToken), cancellationToken).ConfigureAwait(false);
+
+        return await ReadTitlesXml(1, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Collects the AniDB ids whose entry fuzzily matches a name.
+    /// </summary>
+    /// <param name="xml">The contents of the AniDB titles file.</param>
+    /// <param name="name">The name to search for.</param>
+    /// <returns>The matching AniDB ids.</returns>
+    private static List<string> SearchTitlesXml(string xml, string name)
+    {
+        var results = new List<string>();
+        string strippedName = StripYearRegex().Replace(name, string.Empty);
+
+        // The pattern embeds the search term as a fuzzy expression, so it cannot be a
+        // [GeneratedRegex]. Compiled is worth its build cost here: the atomic group
+        // backtracks heavily across a multi-megabyte document.
+        var searchRegex = new Regex(
+            @"<anime aid=""([0-9]+)"">(?>[^<>]+|<(?!\/anime>)[^<>]*>)*?.*" + FuzzyRegexEscape(ShortenString(strippedName, 6, 20)),
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        // Enumerate the matches once. Indexing into them one at a time re-scanned the whole
+        // document for every result, which made a common name quadratic in its match count.
+        foreach (Match match in searchRegex.Matches(xml))
+        {
+            string id = match.Groups[1].Value;
+            if (string.IsNullOrEmpty(id))
+            {
+                break;
+            }
+
+            results.Add(id);
+        }
+
+        return results;
     }
 
     /// <summary>
