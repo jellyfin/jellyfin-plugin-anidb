@@ -74,7 +74,7 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     /// <inheritdoc />
     public async Task<MetadataResult<Series>> GetMetadata(SeriesInfo info, CancellationToken cancellationToken)
     {
-        var animeId = info.ProviderIds.GetOrDefault(ProviderNames.AniDb);
+        var animeId = info.ProviderIds.GetValueOrDefault(ProviderNames.AniDb);
 
         if (string.IsNullOrEmpty(animeId) && !string.IsNullOrEmpty(info.Name))
         {
@@ -116,7 +116,7 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     public async Task<IEnumerable<RemoteSearchResult>> GetSearchResults(SeriesInfo searchInfo, CancellationToken cancellationToken)
     {
         var results = new List<RemoteSearchResult>();
-        var animeId = searchInfo.ProviderIds.GetOrDefault(ProviderNames.AniDb);
+        var animeId = searchInfo.ProviderIds.GetValueOrDefault(ProviderNames.AniDb);
 
         if (!string.IsNullOrEmpty(animeId))
         {
@@ -390,7 +390,7 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
                                 // EpisodeInfo info = new EpisodeInfo();
                                 // info.AnimeSeriesIndex = series.AnimeSeriesIndex;
                                 // info.IndexNumberEnd = string(epno);
-                                // info.SeriesProviderIds.GetOrDefault(ProviderNames.AniDb);
+                                // info.SeriesProviderIds.GetValueOrDefault(ProviderNames.AniDb);
                                 // episodes.Add(info);
                                 break;
                         }

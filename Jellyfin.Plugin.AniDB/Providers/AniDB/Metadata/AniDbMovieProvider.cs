@@ -23,7 +23,7 @@ public class AniDbMovieProvider(IApplicationPaths appPaths) : IRemoteMetadataPro
     /// <inheritdoc />
     public async Task<MetadataResult<Movie>> GetMetadata(MovieInfo info, CancellationToken cancellationToken)
     {
-        var animeId = info.ProviderIds.GetOrDefault(ProviderNames.AniDb);
+        var animeId = info.ProviderIds.GetValueOrDefault(ProviderNames.AniDb);
 
         var seriesInfo = new SeriesInfo();
         seriesInfo.ProviderIds.Add(ProviderNames.AniDb, animeId);
@@ -68,7 +68,7 @@ public class AniDbMovieProvider(IApplicationPaths appPaths) : IRemoteMetadataPro
     public async Task<IEnumerable<RemoteSearchResult>> GetSearchResults(MovieInfo searchInfo, CancellationToken cancellationToken)
     {
         var seriesInfo = new SeriesInfo();
-        var animeId = searchInfo.ProviderIds.GetOrDefault(ProviderNames.AniDb);
+        var animeId = searchInfo.ProviderIds.GetValueOrDefault(ProviderNames.AniDb);
 
         if (animeId != null)
         {

@@ -34,7 +34,7 @@ public class AniDbEpisodeProvider(IServerConfigurationManager configurationManag
         cancellationToken.ThrowIfCancellationRequested();
         var result = new MetadataResult<Episode>();
 
-        var animeId = info.SeriesProviderIds.GetOrDefault(ProviderNames.AniDb);
+        var animeId = info.SeriesProviderIds.GetValueOrDefault(ProviderNames.AniDb);
         if (string.IsNullOrEmpty(animeId))
         {
             return result;
