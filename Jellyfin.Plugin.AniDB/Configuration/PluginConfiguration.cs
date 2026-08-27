@@ -1,3 +1,4 @@
+using System;
 using MediaBrowser.Model.Plugins;
 
 namespace Jellyfin.Plugin.AniDB.Configuration;
@@ -29,6 +30,15 @@ public enum AnimeDefaultGenreType
 
 public class PluginConfiguration : BasePluginConfiguration
 {
+    /// <summary>
+    /// The shortest cache window AniDB metadata may be reused for. AniDB permits only a low
+    /// number of requests per IP per day, so a shorter window would make a library of any
+    /// size impossible to scan without being banned.
+    /// </summary>
+    public const int MinimumCacheAgeDays = 7;
+
+    private int _maxCacheAge = MinimumCacheAgeDays;
+
     public PluginConfiguration()
     {
         TitlePreference = TitlePreferenceType.Localized;
@@ -59,7 +69,15 @@ public class PluginConfiguration : BasePluginConfiguration
 
     public AnimeDefaultGenreType AnimeDefaultGenre { get; set; }
 
-    public int MaxCacheAge { get; set; }
+    /// <summary>
+    /// Gets or sets the number of days cached series metadata is reused before AniDB is
+    /// queried again. Clamped to at least <see cref="MinimumCacheAgeDays"/> days.
+    /// </summary>
+    public int MaxCacheAge
+    {
+        get => Math.Max(_maxCacheAge, MinimumCacheAgeDays);
+        set => _maxCacheAge = value;
+    }
 
     public bool AniDbReplaceGraves { get; set; }
 }

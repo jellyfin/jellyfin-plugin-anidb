@@ -107,11 +107,50 @@ public class AniDbTitleDownloader : IAniDbTitleDownloader
     {
         var httpClient = Plugin.Instance.GetHttpClient();
         await AniDbSeriesProvider.WaitForRequestSlot(cancellationToken).ConfigureAwait(false);
-        // The URL for retrieving a list of all anime titles and their AniDB IDs.
-        using var stream = await httpClient.GetStreamAsync(new Uri("https://anidb.net/api/anime-titles.xml.gz"), cancellationToken).ConfigureAwait(false);
-        using var unzipped = new GZipStream(stream, CompressionMode.Decompress);
-        using var writer = File.Open(titlesFile, FileMode.Create, FileAccess.Write);
-        await unzipped.CopyToAsync(writer, cancellationToken).ConfigureAwait(false);
+
+        // Decompress into a temporary file and only swap it in once it is complete. A ban is
+        // answered with a plain <error> document rather than gzip, which would otherwise
+        // truncate the existing titles file that every title lookup depends on.
+        var temporaryFile = titlesFile + ".tmp";
+
+        try
+        {
+            // The URL for retrieving a list of all anime titles and their AniDB IDs.
+            using (var stream = await httpClient.GetStreamAsync(new Uri("https://anidb.net/api/anime-titles.xml.gz"), cancellationToken).ConfigureAwait(false))
+            using (var unzipped = new GZipStream(stream, CompressionMode.Decompress))
+            using (var writer = File.Open(temporaryFile, FileMode.Create, FileAccess.Write))
+            {
+                await unzipped.CopyToAsync(writer, cancellationToken).ConfigureAwait(false);
+            }
+
+            File.Move(temporaryFile, titlesFile, true);
+        }
+        catch
+        {
+            TryDelete(temporaryFile);
+
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Deletes a file, ignoring any failure to do so.
+    /// </summary>
+    /// <param name="path">The file to delete.</param>
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (IOException)
+        {
+            // Nothing useful can be done about a leftover temporary file.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Nothing useful can be done about a leftover temporary file.
+        }
     }
 
     /// <summary>
