@@ -43,7 +43,7 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
 
     private static readonly int[] IgnoredTagIds = [6, 22, 23, 60, 128, 129, 185, 216, 242, 255, 268, 269, 289];
     private static readonly Regex AniDbUrlRegex = MyRegex();
-    private static readonly Regex _errorRegex = new(@"<error code=""[0-9]+"">[a-zA-Z]+</error>", RegexOptions.Compiled);
+    private static readonly Regex _errorRegex = new(@"<error[^>]*>.*?</error>", RegexOptions.Compiled | RegexOptions.Singleline);
     private static readonly CompositeFormat _seriesQueryUrlFormat = CompositeFormat.Parse("http://api.anidb.net:9001/httpapi?request=anime&client={0}&clientver=1&protover=1&aid={1}");
 
     /// <summary>
@@ -667,31 +667,39 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
             throw new ArgumentException("The series data path does not contain a directory.", nameof(seriesDataPath));
         }
 
-        Directory.CreateDirectory(directory);
-        DeleteXmlFiles(directory);
-
         var httpClient = Plugin.Instance.GetHttpClient();
         var url = string.Format(CultureInfo.InvariantCulture, _seriesQueryUrlFormat, "mediabrowser", aid);
 
         await WaitForRequestSlot(cancellationToken).ConfigureAwait(false);
 
+        string text;
         using (var response = await httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false))
-        using (var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false))
-        using (var reader = new StreamReader(stream, Encoding.UTF8, true))
-        using (var file = File.Open(seriesDataPath, FileMode.Create, FileAccess.Write))
-        using (var writer = new StreamWriter(file))
         {
-            var text = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
-            text = text.Replace("&#x0;", string.Empty, StringComparison.Ordinal);
-
-            var errorRegexMatch = _errorRegex.Match(text);
-            if (errorRegexMatch.Success)
-            {
-                throw new InvalidOperationException("AniDB API error " + errorRegexMatch.Value);
-            }
-
-            await writer.WriteAsync(text).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+            text = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
         }
+
+        text = text.Replace("&#x0;", string.Empty, StringComparison.Ordinal);
+
+        // Validate before touching the cache. AniDB answers a ban with an <error> document,
+        // and the daily quota is low, so overwriting good cached data with an error would
+        // force another request on the very next scan - precisely when no request must be
+        // made. On failure the previous cache is left intact.
+        var errorRegexMatch = _errorRegex.Match(text);
+        if (errorRegexMatch.Success)
+        {
+            throw new InvalidOperationException("AniDB API error " + errorRegexMatch.Value);
+        }
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            throw new InvalidOperationException("AniDB returned an empty response for anime " + aid);
+        }
+
+        // The payload is known good, so the previous cache may now be replaced.
+        Directory.CreateDirectory(directory);
+        DeleteXmlFiles(directory);
+        await File.WriteAllTextAsync(seriesDataPath, text, new UTF8Encoding(false), cancellationToken).ConfigureAwait(false);
 
         await ExtractEpisodes(directory, seriesDataPath).ConfigureAwait(false);
         await ExtractCast(cachePath, seriesDataPath).ConfigureAwait(false);
