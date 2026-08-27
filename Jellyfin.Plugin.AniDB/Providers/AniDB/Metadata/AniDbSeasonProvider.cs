@@ -35,7 +35,7 @@ public class AniDbSeasonProvider(IApplicationPaths appPaths) : IRemoteMetadataPr
             }
         };
 
-        var seriesId = info.ProviderIds.GetOrDefault(ProviderNames.AniDb);
+        var seriesId = info.ProviderIds.GetValueOrDefault(ProviderNames.AniDb);
         if (seriesId == null)
         {
             return result;

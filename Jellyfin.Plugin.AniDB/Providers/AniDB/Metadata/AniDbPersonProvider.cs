@@ -28,7 +28,7 @@ public class AniDbPersonProvider(IApplicationPaths paths) : IRemoteMetadataProvi
     {
         var result = new MetadataResult<Person>();
 
-        if (!string.IsNullOrEmpty(info.ProviderIds.GetOrDefault(ProviderNames.AniDb)))
+        if (!string.IsNullOrEmpty(info.ProviderIds.GetValueOrDefault(ProviderNames.AniDb)))
         {
             return Task.FromResult(result);
         }
