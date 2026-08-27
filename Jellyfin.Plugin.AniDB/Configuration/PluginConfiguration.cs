@@ -1,4 +1,4 @@
-﻿using MediaBrowser.Model.Plugins;
+using MediaBrowser.Model.Plugins;
 
 namespace Jellyfin.Plugin.AniDB.Configuration
 {
@@ -37,7 +37,6 @@ namespace Jellyfin.Plugin.AniDB.Configuration
             TidyGenreList = true;
             TitleCaseGenres = false;
             AnimeDefaultGenre = AnimeDefaultGenreType.Anime;
-            AniDbRateLimit = 2000;
             MaxCacheAge = 7;
             AniDbReplaceGraves = true;
         }
@@ -57,8 +56,6 @@ namespace Jellyfin.Plugin.AniDB.Configuration
         public bool TitleCaseGenres { get; set; }
 
         public AnimeDefaultGenreType AnimeDefaultGenre { get; set; }
-
-        public int AniDbRateLimit { get; set; }
 
         public int MaxCacheAge { get; set; }
 

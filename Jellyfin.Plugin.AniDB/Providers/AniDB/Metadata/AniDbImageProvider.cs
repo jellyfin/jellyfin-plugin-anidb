@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Threading;
@@ -29,7 +29,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
 
         public async Task<HttpResponseMessage> GetImageResponse(string url, CancellationToken cancellationToken)
         {
-            await AniDbSeriesProvider.RequestLimiter.Tick().ConfigureAwait(false);
+            await AniDbSeriesProvider.WaitForRequestSlot(cancellationToken).ConfigureAwait(false);
             var httpClient = Plugin.Instance.GetHttpClient();
 
             return await httpClient.GetAsync(url).ConfigureAwait(false);

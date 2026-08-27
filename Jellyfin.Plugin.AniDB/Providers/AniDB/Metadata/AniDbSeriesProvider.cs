@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Threading.RateLimiting;
 using System.Threading.Tasks;
 using System.Xml;
 using System.Xml.Linq;
@@ -29,8 +30,17 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
         private const string SeriesQueryUrl = "http://api.anidb.net:9001/httpapi?request=anime&client={0}&clientver=1&protover=1&aid={1}";
         private const string ClientName = "mediabrowser";
 
-        // AniDB has very low request rate limits, a minimum of 2 seconds between requests, and an average of 4 seconds between requests
-        public static readonly RateLimiter RequestLimiter = new RateLimiter(TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(5), TimeSpan.FromMinutes(5));
+        // AniDB has very low request rate limits, so allow at most one request every two seconds.
+        private static readonly RateLimiter _requestLimiter = new TokenBucketRateLimiter(new TokenBucketRateLimiterOptions
+        {
+            TokenLimit = 1,
+            TokensPerPeriod = 1,
+            ReplenishmentPeriod = TimeSpan.FromSeconds(2),
+            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+            QueueLimit = int.MaxValue,
+            AutoReplenishment = true
+        });
+
         private static readonly int[] IgnoredTagIds = { 6, 22, 23, 60, 128, 129, 185, 216, 242, 255, 268, 269, 289 };
         private static readonly Regex AniDbUrlRegex = new Regex(@"https?://anidb.net/\w+(/[0-9]+)? \[(?<name>[^\]]*)\]", RegexOptions.Compiled);
         private static readonly Regex _errorRegex = new(@"<error code=""[0-9]+"">[a-zA-Z]+</error>", RegexOptions.Compiled);
@@ -172,6 +182,16 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             }
 
             return seriesDataPath;
+        }
+
+        /// <summary>
+        /// Waits until the AniDB rate limit allows another request to be made.
+        /// </summary>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
+        internal static async Task WaitForRequestSlot(CancellationToken cancellationToken)
+        {
+            using var lease = await _requestLimiter.AcquireAsync(1, cancellationToken).ConfigureAwait(false);
         }
 
         private async Task FetchSeriesInfo(MetadataResult<Series> result, string seriesDataPath, string preferredMetadataLangauge)
@@ -577,8 +597,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             var httpClient = Plugin.Instance.GetHttpClient();
             var url = string.Format(SeriesQueryUrl, ClientName, aid);
 
-            await RequestLimiter.Tick().ConfigureAwait(false);
-            await Task.Delay(Plugin.Instance.Configuration.AniDbRateLimit).ConfigureAwait(false);
+            await WaitForRequestSlot(cancellationToken).ConfigureAwait(false);
 
             using (var response = await httpClient.GetAsync(url).ConfigureAwait(false))
             using (var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false))
