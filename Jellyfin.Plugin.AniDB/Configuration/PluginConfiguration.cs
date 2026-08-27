@@ -22,7 +22,9 @@ namespace Jellyfin.Plugin.AniDB.Configuration
 
     public enum AnimeDefaultGenreType
     {
-        None, Anime, Animation
+        None,
+        Anime,
+        Animation
     }
 
     public class PluginConfiguration : BasePluginConfiguration

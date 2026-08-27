@@ -1,8 +1,8 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Net.Http;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Net;
 using MediaBrowser.Controller.Entities.TV;
@@ -11,15 +11,18 @@ using MediaBrowser.Model.Providers;
 
 namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
 {
-    public class AniDbSeasonProvider : IRemoteMetadataProvider<Season, SeasonInfo>
+    /// <summary>
+    /// The AniDB metadata provider for seasons.
+    /// </summary>
+    /// <param name="appPaths">Instance of the <see cref="IApplicationPaths"/> interface.</param>
+    public class AniDbSeasonProvider(IApplicationPaths appPaths) : IRemoteMetadataProvider<Season, SeasonInfo>
     {
-        private readonly AniDbSeriesProvider _seriesProvider;
+        private readonly AniDbSeriesProvider _seriesProvider = new AniDbSeriesProvider(appPaths);
 
-        public AniDbSeasonProvider(IApplicationPaths appPaths)
-        {
-            _seriesProvider = new AniDbSeriesProvider(appPaths);
-        }
+        /// <inheritdoc />
+        public string Name => "AniDB";
 
+        /// <inheritdoc />
         public async Task<MetadataResult<Season>> GetMetadata(SeasonInfo info, CancellationToken cancellationToken)
         {
             var result = new MetadataResult<Season>
@@ -41,7 +44,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             var seriesInfo = new SeriesInfo();
             seriesInfo.ProviderIds.Add(ProviderNames.AniDb, seriesId);
 
-            var seriesResult = await _seriesProvider.GetMetadata(seriesInfo, cancellationToken);
+            var seriesResult = await _seriesProvider.GetMetadata(seriesInfo, cancellationToken).ConfigureAwait(false);
             if (seriesResult.HasMetadata)
             {
                 result.Item.Name = seriesResult.Item.Name;
@@ -56,8 +59,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             return result;
         }
 
-        public string Name => "AniDB";
-
+        /// <inheritdoc />
         public async Task<IEnumerable<RemoteSearchResult>> GetSearchResults(SeasonInfo searchInfo, CancellationToken cancellationToken)
         {
             var metadata = await GetMetadata(searchInfo, cancellationToken).ConfigureAwait(false);
@@ -81,6 +83,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             return list;
         }
 
+        /// <inheritdoc />
         public Task<HttpResponseMessage> GetImageResponse(string url, CancellationToken cancellationToken)
         {
             throw new NotImplementedException();

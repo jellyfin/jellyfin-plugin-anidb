@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -9,52 +9,52 @@ namespace Jellyfin.Plugin.AniDB.Providers
 {
     public static class GenreHelper
     {
-        private static readonly Dictionary<string, string> GenreMappings = new Dictionary<string, string>
+        private static readonly Dictionary<string, string> GenreMappings = new()
         {
-            {"Action", "Action"},
-            {"Advanture", "Adventure"},
-            {"Contemporary Fantasy", "Fantasy"},
-            {"Comedy", "Comedy"},
-            {"Dark Fantasy", "Fantasy"},
-            {"Dementia", "Psychological Thriller"},
-            {"Demons", "Fantasy"},
-            {"Drama", "Drama"},
-            {"Ecchi", "Ecchi"},
-            {"Fantasy", "Fantasy"},
-            {"Harem", "Harem"},
-            {"Hentai", "Adult"},
-            {"Historical", "Period & Historical"},
-            {"Horror", "Horror"},
-            {"Josei", "Josei"},
-            {"Kids", "Kids"},
-            {"Magic", "Fantasy"},
-            {"Martial Arts", "Martial Arts"},
-            {"Mahou Shoujo", "Mahou Shoujo"},
-            {"Mecha", "Mecha"},
-            {"Music", "Music"},
-            {"Mystery", "Mystery"},
-            {"Parody", "Comedy"},
-            {"Psychological", "Psychological Thriller"},
-            {"Romance", "Romance"},
-            {"Sci-Fi", "Sci-Fi"},
-            {"Seinen", "Seinen"},
-            {"Shoujo", "Shoujo"},
-            {"Shounen", "Shounen"},
-            {"Slice of Life", "Slice of Life"},
-            {"Space", "Sci-Fi"},
-            {"Sports", "Sport"},
-            {"Supernatural", "Supernatural"},
-            {"Thriller", "Thriller"},
-            {"Tragedy", "Tragedy"},
-            {"Witch", "Supernatural"},
-            {"Vampire", "Supernatural"},
-            {"Yaoi", "Adult"},
-            {"Yuri", "Adult"},
-            {"Zombie", "Supernatural"},
+            { "Action", "Action" },
+            { "Advanture", "Adventure" },
+            { "Contemporary Fantasy", "Fantasy" },
+            { "Comedy", "Comedy" },
+            { "Dark Fantasy", "Fantasy" },
+            { "Dementia", "Psychological Thriller" },
+            { "Demons", "Fantasy" },
+            { "Drama", "Drama" },
+            { "Ecchi", "Ecchi" },
+            { "Fantasy", "Fantasy" },
+            { "Harem", "Harem" },
+            { "Hentai", "Adult" },
+            { "Historical", "Period & Historical" },
+            { "Horror", "Horror" },
+            { "Josei", "Josei" },
+            { "Kids", "Kids" },
+            { "Magic", "Fantasy" },
+            { "Martial Arts", "Martial Arts" },
+            { "Mahou Shoujo", "Mahou Shoujo" },
+            { "Mecha", "Mecha" },
+            { "Music", "Music" },
+            { "Mystery", "Mystery" },
+            { "Parody", "Comedy" },
+            { "Psychological", "Psychological Thriller" },
+            { "Romance", "Romance" },
+            { "Sci-Fi", "Sci-Fi" },
+            { "Seinen", "Seinen" },
+            { "Shoujo", "Shoujo" },
+            { "Shounen", "Shounen" },
+            { "Slice of Life", "Slice of Life" },
+            { "Space", "Sci-Fi" },
+            { "Sports", "Sport" },
+            { "Supernatural", "Supernatural" },
+            { "Thriller", "Thriller" },
+            { "Tragedy", "Tragedy" },
+            { "Witch", "Supernatural" },
+            { "Vampire", "Supernatural" },
+            { "Yaoi", "Adult" },
+            { "Yuri", "Adult" },
+            { "Zombie", "Supernatural" },
         };
 
         private static readonly string[] GenresAsTags =
-        {
+        [
             "Hentai",
             "Space",
             "Weltraum",
@@ -62,7 +62,7 @@ namespace Jellyfin.Plugin.AniDB.Providers
             "Yuri",
             "Demons",
             "Witch",
-            //AniSearchTags
+            // AniSearchTags
             "Krieg",
             "Militär",
             "Satire",
@@ -81,12 +81,12 @@ namespace Jellyfin.Plugin.AniDB.Providers
             "Splatter",
             "Tragödie",
             "Verworrene Handlung",
-            //Themen
+            // Themen
             "Erwachsenwerden",
             "Gender Bender",
             "Ältere Frau, jüngerer Mann",
             "Älterer Mann, jüngere Frau",
-            //Schule (School)
+            // Schule (School)
             "Grundschule",
             "Kindergarten",
             "Klubs",
@@ -94,7 +94,7 @@ namespace Jellyfin.Plugin.AniDB.Providers
             "Oberschule",
             "Schule",
             "Universität",
-            //Zeit (Time)
+            // Zeit (Time)
             "Altes Asien",
             "Frühe Neuzeit",
             "Gegenwart",
@@ -102,19 +102,19 @@ namespace Jellyfin.Plugin.AniDB.Providers
             "Meiji-Ära",
             "Mittelalter",
             "Weltkriege",
-            //Fantasy
+            // Fantasy
             "Dunkle Fantasy",
             "Epische Fantasy",
             "Zeitgenössische Fantasy",
-            //Ort
+            // Ort
             "Alternative Welt",
             "In einem Raumschiff",
             "Weltraum",
-            //Setting
+            // Setting
             "Cyberpunk",
             "Endzeit",
             "Space Opera",
-            //Hauptfigur
+            // Hauptfigur
             "Charakterschache Heldin",
             "Charakterschacher Held",
             "Charakterstarke Heldin",
@@ -124,14 +124,14 @@ namespace Jellyfin.Plugin.AniDB.Providers
             "Stoischer Held",
             "Widerwillige Heldin",
             "Widerwilliger Held",
-            //Figuren
+            // Figuren
             "Diva",
             "Genie",
             "Schul-Delinquent",
             "Tomboy",
             "Tsundere",
             "Yandere",
-            //Kampf (fight)
+            // Kampf (fight)
             "Bionische Kräfte",
             "Martial Arts",
             "PSI-Kräfte",
@@ -139,7 +139,7 @@ namespace Jellyfin.Plugin.AniDB.Providers
             "Super Robots",
             "Schusswaffen",
             "Schwerter & co",
-            //Sports (Sport)
+            // Sports (Sport)
             "Baseball",
             "Boxen",
             "Denk- und Glücksspiele",
@@ -148,13 +148,13 @@ namespace Jellyfin.Plugin.AniDB.Providers
             "Kampfsport",
             "Rennsport",
             "Tennis",
-            //Kunst (Art)
+            // Kunst (Art)
             "Anime & Film",
             "Malerei",
             "Manga & Doujinshi",
             "Musik",
             "Theater",
-            //Tätigkeit
+            // Tätigkeit
             "Band",
             "Detektiv",
             "Dieb",
@@ -166,7 +166,7 @@ namespace Jellyfin.Plugin.AniDB.Providers
             "Ritter",
             "Samurai",
             "Solosänger",
-            //Wesen
+            // Wesen
             "Außerirdische",
             "Cyborgs",
             "Dämonen",
@@ -182,12 +182,14 @@ namespace Jellyfin.Plugin.AniDB.Providers
             "Vampire",
             "Youkai",
             "Zombie",
+        ];
+
+        private static readonly Dictionary<string, string> IgnoreIfPresent = new()
+        {
+            { "Psychological Thriller", "Thriller" }
         };
 
-        private static readonly Dictionary<string, string> IgnoreIfPresent = new Dictionary<string, string>
-        {
-            {"Psychological Thriller", "Thriller"}
-        };
+        private static readonly string[] second = new[] { "Animation", "Anime" };
 
         public static void CleanupGenres(Series series)
         {
@@ -195,32 +197,29 @@ namespace Jellyfin.Plugin.AniDB.Providers
 
             if (config.TitleCaseGenres)
             {
-                series.Genres = series.Genres.Select(g => CultureInfo.InvariantCulture.TextInfo.ToTitleCase(g)).ToArray();
+                series.Genres = [.. series.Genres.Select(g => CultureInfo.InvariantCulture.TextInfo.ToTitleCase(g))];
             }
 
             if (config.TidyGenreList)
             {
-                series.Genres = RemoveRedundantGenres(series.Genres)
-                    .Distinct()
-                    .ToArray();
+                series.Genres = [.. RemoveRedundantGenres(series.Genres).Distinct()];
 
                 TidyGenres(series);
             }
 
             if (config.AnimeDefaultGenre != AnimeDefaultGenreType.None)
             {
-                series.Genres = series.Genres
-                    .Except(new[] { "Animation", "Anime" })
-                    .Prepend(config.AnimeDefaultGenre.ToString())
-                    .ToArray();
+                series.Genres = [.. series.Genres
+                    .Except(second)
+                    .Prepend(config.AnimeDefaultGenre.ToString())];
             }
 
             if (config.MaxGenres > 0)
             {
-                series.Genres = series.Genres.Take(config.MaxGenres).ToArray();
+                series.Genres = [.. series.Genres.Take(config.MaxGenres)];
             }
 
-            series.Genres = series.Genres.OrderBy(i => i).ToArray();
+            series.Genres = [.. series.Genres.OrderBy(i => i)];
         }
 
         public static void TidyGenres(Series series)
@@ -230,8 +229,7 @@ namespace Jellyfin.Plugin.AniDB.Providers
 
             foreach (string genre in series.Genres)
             {
-                string mapped;
-                if (GenreMappings.TryGetValue(genre, out mapped))
+                if (GenreMappings.TryGetValue(genre, out var mapped))
                 {
                     genres.Add(mapped);
                 }
@@ -246,13 +244,13 @@ namespace Jellyfin.Plugin.AniDB.Providers
                 }
             }
 
-            series.Genres = genres.ToArray();
-            series.Tags = tags.ToArray();
+            series.Genres = [.. genres];
+            series.Tags = [.. tags];
         }
 
         public static IEnumerable<string> RemoveRedundantGenres(IEnumerable<string> genres)
         {
-            var list = genres as IList<string> ?? genres.ToList();
+            var list = genres as IList<string> ?? [.. genres];
 
             var toRemove = list.Where(IgnoreIfPresent.ContainsKey).Select(genre => IgnoreIfPresent[genre]).ToList();
             return list.Where(genre => !toRemove.Contains(genre));

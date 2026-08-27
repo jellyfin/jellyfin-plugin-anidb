@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -14,54 +14,62 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Identity
     /// The <see cref="AniDbTitleMatcher"/> class loads series titles from the series.xml file in the application data anidb folder,
     /// and provides the means to search for a the AniDB of a series by series title.
     /// </summary>
-    public class AniDbTitleMatcher : IAniDbTitleMatcher
+    /// <remarks>
+    /// Initializes a new instance of the <see cref="AniDbTitleMatcher"/> class.
+    /// </remarks>
+    /// <param name="logger">The logger.</param>
+    /// <param name="downloader">The AniDB title downloader.</param>
+    public sealed class AniDbTitleMatcher(ILogger<AniDbTitleMatcher> logger, IAniDbTitleDownloader downloader) : IAniDbTitleMatcher, IDisposable
     {
-        public enum TitleType
-        {
-            Main = 0,
-            Official = 1,
-            Short = 2,
-            Synonym = 3
-        }
+        private const string Remove = "\"'!`?";
+        private const string Spacers = "/,.:;\\(){}[]+-_=–*";  // (there are not actually two - in the they are different char codes)
 
-        public struct TitleInfo
-        {
-            public string AniDbId { get; set; }
-            public string Title { get; set; }
-            public TitleType Type { get; set; }
-        }
+        private static Dictionary<string, TitleInfo>? _titles;
 
-        //todo replace the singleton IAniDbTitleMatcher with an injected dependency if/when MediaBrowser allows plugins to register their own components
+        private readonly IAniDbTitleDownloader _downloader = downloader;
+        private readonly ILogger<AniDbTitleMatcher> _logger = logger;
+        private readonly SemaphoreSlim _lock = new(1, 1);
+
+        // todo replace the singleton IAniDbTitleMatcher with an injected dependency if/when MediaBrowser allows plugins to register their own components
+
         /// <summary>
         /// Gets or sets the global <see cref="IAniDbTitleMatcher"/> instance.
         /// </summary>
-        public static IAniDbTitleMatcher DefaultInstance { get; set; }
+        public static IAniDbTitleMatcher DefaultInstance { get; set; } = null!;
 
-        public readonly IAniDbTitleDownloader _downloader;
-        private readonly ILogger<AniDbTitleMatcher> _logger;
-        private readonly SemaphoreSlim _lock = new SemaphoreSlim(1, 1);
-
-        public static Dictionary<string, TitleInfo> _titles;
+        private static bool IsLoaded => _titles != null;
 
         /// <summary>
-        /// Creates a new instance of the AniDbTitleMatcher class.
+        /// Gets the title info for the given title.
         /// </summary>
-        /// <param name="logger">The logger.</param>
-        /// <param name="downloader">The AniDB title downloader.</param>
-        public AniDbTitleMatcher(ILogger<AniDbTitleMatcher> logger, IAniDbTitleDownloader downloader)
+        /// <param name="title">The title to look up.</param>
+        /// <returns>The title info, or the default value when the title is unknown.</returns>
+        public static TitleInfo GetTitleInfos(string title)
         {
-            _logger = logger;
-            _downloader = downloader;
+            if (!string.IsNullOrEmpty(title)
+                && _titles != null
+                && _titles.TryGetValue(title, out TitleInfo info))
+            {
+                return info;
+            }
+
+            return default;
         }
 
-        public Task<string> FindSeries(string title)
+        /// <summary>
+        /// Finds the AniDB id for the series with the given title.
+        /// </summary>
+        /// <param name="title">The title of the series to search for.</param>
+        /// <returns>The AniDB id of the series if found; else <c>null</c>.</returns>
+        public Task<string?> FindSeries(string title)
         {
             return FindSeries(title, CancellationToken.None);
         }
 
-        public async Task<string> FindSeries(string title, CancellationToken cancellationToken)
+        /// <inheritdoc />
+        public async Task<string?> FindSeries(string title, CancellationToken cancellationToken)
         {
-            await _lock.WaitAsync().ConfigureAwait(false);
+            await _lock.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
                 if (!IsLoaded)
@@ -77,29 +85,12 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Identity
             return LookupAniDbId(title) ?? LookupAniDbId(GetComparableName(title));
         }
 
-        private string LookupAniDbId(string title)
+        /// <inheritdoc />
+        public void Dispose()
         {
-            if (_titles.TryGetValue(title, out TitleInfo info))
-            {
-                return info.AniDbId;
-            }
-
-            return null;
+            _lock.Dispose();
+            GC.SuppressFinalize(this);
         }
-
-        public static TitleInfo GetTitleInfos(string title)
-        {
-            if (!string.IsNullOrEmpty(title)
-                && _titles.TryGetValue(title, out TitleInfo info))
-            {
-                return info;
-            }
-
-            return new TitleInfo();
-        }
-
-        private const string Remove = "\"'!`?";
-        private const string Spacers = "/,.:;\\(){}[]+-_=–*";  // (there are not actually two - in the they are different char codes)
 
         internal static string GetComparableName(string name)
         {
@@ -112,13 +103,13 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Identity
                 {
                     // skip char modifier and diacritics
                 }
-                else if (Remove.IndexOf(c) > -1)
+                else if (Remove.Contains(c, StringComparison.Ordinal))
                 {
                     // skip chars we are removing
                 }
-                else if (Spacers.IndexOf(c) > -1)
+                else if (Spacers.Contains(c, StringComparison.Ordinal))
                 {
-                    sb.Append(" ");
+                    sb.Append(' ');
                 }
                 else if (c == '&')
                 {
@@ -129,24 +120,43 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Identity
                     sb.Append(c);
                 }
             }
+
             name = sb.ToString();
-            name = name.Replace(", the", "");
-            name = name.Replace("the ", " ");
-            name = name.Replace(" the ", " ");
+            name = name.Replace(", the", string.Empty, StringComparison.Ordinal);
+            name = name.Replace("the ", " ", StringComparison.Ordinal);
+            name = name.Replace(" the ", " ", StringComparison.Ordinal);
 
             string prevName;
             do
             {
                 prevName = name;
-                name = name.Replace("  ", " ");
-            } while (name.Length != prevName.Length);
+                name = name.Replace("  ", " ", StringComparison.Ordinal);
+            }
+            while (name.Length != prevName.Length);
 
             return name.Trim();
         }
 
-        public bool IsLoaded
+        private static string? LookupAniDbId(string title)
         {
-            get { return _titles != null; }
+            if (_titles != null && _titles.TryGetValue(title, out TitleInfo info))
+            {
+                return info.AniDbId;
+            }
+
+            return null;
+        }
+
+        private static TitleType ParseType(string? type)
+        {
+            return type switch
+            {
+                "main" => TitleType.Main,
+                "official" => TitleType.Official,
+                "short" => TitleType.Short,
+                "syn" => TitleType.Synonym,
+                _ => TitleType.Synonym,
+            };
         }
 
         private async Task Load(CancellationToken cancellationToken)
@@ -175,6 +185,12 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Identity
         {
             _logger.LogDebug("Loading AniDB titles");
 
+            var titles = _titles;
+            if (titles == null)
+            {
+                return;
+            }
+
             var titlesFile = _downloader.TitlesFilePath;
 
             var settings = new XmlReaderSettings
@@ -188,7 +204,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Identity
             using (var stream = new StreamReader(titlesFile, Encoding.UTF8))
             using (var reader = XmlReader.Create(stream, settings))
             {
-                string aid = null;
+                string? aid = null;
 
                 while (await reader.ReadAsync().ConfigureAwait(false))
                 {
@@ -207,47 +223,28 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Identity
                                 {
                                     var type = ParseType(reader.GetAttribute("type"));
 
-                                    if (!_titles.TryGetValue(title, out TitleInfo currentTitleInfo) || (int)currentTitleInfo.Type < (int)type)
+                                    if (!titles.TryGetValue(title, out TitleInfo currentTitleInfo) || (int)currentTitleInfo.Type < (int)type)
                                     {
-                                        _titles[title] = new TitleInfo { AniDbId = aid, Type = type, Title = title };
+                                        titles[title] = new TitleInfo { AniDbId = aid, Type = type, Title = title };
                                     }
                                 }
+
                                 break;
                         }
                     }
                 }
             }
 
-            var comparable = (from pair in _titles
+            var comparable = (from pair in titles
                               let comp = GetComparableName(pair.Key)
-                              where !_titles.ContainsKey(comp)
+                              where !titles.ContainsKey(comp)
                               select new { Title = comp, Id = pair.Value })
                              .ToArray();
 
             foreach (var pair in comparable)
             {
-                _titles[pair.Title] = pair.Id;
+                titles[pair.Title] = pair.Id;
             }
-        }
-
-        private TitleType ParseType(string type)
-        {
-            switch (type)
-            {
-                case "main":
-                    return TitleType.Main;
-
-                case "official":
-                    return TitleType.Official;
-
-                case "short":
-                    return TitleType.Short;
-
-                case "syn":
-                    return TitleType.Synonym;
-            }
-
-            return TitleType.Synonym;
         }
     }
 }
