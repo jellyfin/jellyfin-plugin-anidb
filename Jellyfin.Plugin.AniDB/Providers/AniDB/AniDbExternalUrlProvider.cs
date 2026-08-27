@@ -29,6 +29,9 @@ public class AniDbExternalUrlProvider : IExternalUrlProvider
                 case Episode:
                     yield return $"https://anidb.net/episode/{externalId}";
                     break;
+                case Person:
+                    yield return $"https://anidb.net/creator/{externalId}";
+                    break;
             }
         }
     }
