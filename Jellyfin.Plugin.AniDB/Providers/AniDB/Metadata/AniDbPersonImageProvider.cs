@@ -8,57 +8,56 @@ using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Providers;
 
-namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
+namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata;
+
+/// <summary>
+/// The AniDB image provider for people.
+/// </summary>
+/// <param name="paths">Instance of the <see cref="IApplicationPaths"/> interface.</param>
+public class AniDbPersonImageProvider(IApplicationPaths paths) : IRemoteImageProvider
 {
-    /// <summary>
-    /// The AniDB image provider for people.
-    /// </summary>
-    /// <param name="paths">Instance of the <see cref="IApplicationPaths"/> interface.</param>
-    public class AniDbPersonImageProvider(IApplicationPaths paths) : IRemoteImageProvider
+    private readonly IApplicationPaths _paths = paths;
+
+    /// <inheritdoc />
+    public string Name => "AniDB";
+
+    /// <inheritdoc />
+    public bool Supports(BaseItem item)
     {
-        private readonly IApplicationPaths _paths = paths;
+        return item is Person;
+    }
 
-        /// <inheritdoc />
-        public string Name => "AniDB";
+    /// <inheritdoc />
+    public IEnumerable<ImageType> GetSupportedImages(BaseItem item)
+    {
+        yield return ImageType.Primary;
+    }
 
-        /// <inheritdoc />
-        public bool Supports(BaseItem item)
+    /// <inheritdoc />
+    public Task<IEnumerable<RemoteImageInfo>> GetImages(BaseItem item, CancellationToken cancellationToken)
+    {
+        var infos = new List<RemoteImageInfo>();
+
+        var person = AniDbSeriesProvider.GetPersonInfo(_paths.CachePath, item.Name);
+        if (person != null && !string.IsNullOrEmpty(person.Image))
         {
-            return item is Person;
-        }
-
-        /// <inheritdoc />
-        public IEnumerable<ImageType> GetSupportedImages(BaseItem item)
-        {
-            yield return ImageType.Primary;
-        }
-
-        /// <inheritdoc />
-        public Task<IEnumerable<RemoteImageInfo>> GetImages(BaseItem item, CancellationToken cancellationToken)
-        {
-            var infos = new List<RemoteImageInfo>();
-
-            var person = AniDbSeriesProvider.GetPersonInfo(_paths.CachePath, item.Name);
-            if (person != null && !string.IsNullOrEmpty(person.Image))
+            infos.Add(new RemoteImageInfo
             {
-                infos.Add(new RemoteImageInfo
-                {
-                    Url = person.Image,
-                    Type = ImageType.Primary,
-                    ProviderName = Name
-                });
-            }
-
-            return Task.FromResult<IEnumerable<RemoteImageInfo>>(infos);
+                Url = person.Image,
+                Type = ImageType.Primary,
+                ProviderName = Name
+            });
         }
 
-        /// <inheritdoc />
-        public async Task<HttpResponseMessage> GetImageResponse(string url, CancellationToken cancellationToken)
-        {
-            await AniDbSeriesProvider.WaitForRequestSlot(cancellationToken).ConfigureAwait(false);
-            var httpClient = Plugin.Instance.GetHttpClient();
+        return Task.FromResult<IEnumerable<RemoteImageInfo>>(infos);
+    }
 
-            return await httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
-        }
+    /// <inheritdoc />
+    public async Task<HttpResponseMessage> GetImageResponse(string url, CancellationToken cancellationToken)
+    {
+        await AniDbSeriesProvider.WaitForRequestSlot(cancellationToken).ConfigureAwait(false);
+        var httpClient = Plugin.Instance.GetHttpClient();
+
+        return await httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
     }
 }

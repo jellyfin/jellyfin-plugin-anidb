@@ -8,243 +8,242 @@ using System.Threading.Tasks;
 using System.Xml;
 using Microsoft.Extensions.Logging;
 
-namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Identity
+namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Identity;
+
+/// <summary>
+/// The <see cref="AniDbTitleMatcher"/> class loads series titles from the series.xml file in the application data anidb folder,
+/// and provides the means to search for a the AniDB of a series by series title.
+/// </summary>
+/// <remarks>
+/// Initializes a new instance of the <see cref="AniDbTitleMatcher"/> class.
+/// </remarks>
+/// <param name="logger">The logger.</param>
+/// <param name="downloader">The AniDB title downloader.</param>
+public sealed class AniDbTitleMatcher(ILogger<AniDbTitleMatcher> logger, IAniDbTitleDownloader downloader) : IAniDbTitleMatcher, IDisposable
 {
+    private const string Remove = "\"'!`?";
+    private const string Spacers = "/,.:;\\(){}[]+-_=–*";  // (there are not actually two - in the they are different char codes)
+
+    private static Dictionary<string, TitleInfo>? _titles;
+
+    private readonly IAniDbTitleDownloader _downloader = downloader;
+    private readonly ILogger<AniDbTitleMatcher> _logger = logger;
+    private readonly SemaphoreSlim _lock = new(1, 1);
+
+    // todo replace the singleton IAniDbTitleMatcher with an injected dependency if/when MediaBrowser allows plugins to register their own components
+
     /// <summary>
-    /// The <see cref="AniDbTitleMatcher"/> class loads series titles from the series.xml file in the application data anidb folder,
-    /// and provides the means to search for a the AniDB of a series by series title.
+    /// Gets or sets the global <see cref="IAniDbTitleMatcher"/> instance.
     /// </summary>
-    /// <remarks>
-    /// Initializes a new instance of the <see cref="AniDbTitleMatcher"/> class.
-    /// </remarks>
-    /// <param name="logger">The logger.</param>
-    /// <param name="downloader">The AniDB title downloader.</param>
-    public sealed class AniDbTitleMatcher(ILogger<AniDbTitleMatcher> logger, IAniDbTitleDownloader downloader) : IAniDbTitleMatcher, IDisposable
+    public static IAniDbTitleMatcher DefaultInstance { get; set; } = null!;
+
+    private static bool IsLoaded => _titles != null;
+
+    /// <summary>
+    /// Gets the title info for the given title.
+    /// </summary>
+    /// <param name="title">The title to look up.</param>
+    /// <returns>The title info, or the default value when the title is unknown.</returns>
+    public static TitleInfo GetTitleInfos(string title)
     {
-        private const string Remove = "\"'!`?";
-        private const string Spacers = "/,.:;\\(){}[]+-_=–*";  // (there are not actually two - in the they are different char codes)
-
-        private static Dictionary<string, TitleInfo>? _titles;
-
-        private readonly IAniDbTitleDownloader _downloader = downloader;
-        private readonly ILogger<AniDbTitleMatcher> _logger = logger;
-        private readonly SemaphoreSlim _lock = new(1, 1);
-
-        // todo replace the singleton IAniDbTitleMatcher with an injected dependency if/when MediaBrowser allows plugins to register their own components
-
-        /// <summary>
-        /// Gets or sets the global <see cref="IAniDbTitleMatcher"/> instance.
-        /// </summary>
-        public static IAniDbTitleMatcher DefaultInstance { get; set; } = null!;
-
-        private static bool IsLoaded => _titles != null;
-
-        /// <summary>
-        /// Gets the title info for the given title.
-        /// </summary>
-        /// <param name="title">The title to look up.</param>
-        /// <returns>The title info, or the default value when the title is unknown.</returns>
-        public static TitleInfo GetTitleInfos(string title)
+        if (!string.IsNullOrEmpty(title)
+            && _titles != null
+            && _titles.TryGetValue(title, out TitleInfo info))
         {
-            if (!string.IsNullOrEmpty(title)
-                && _titles != null
-                && _titles.TryGetValue(title, out TitleInfo info))
+            return info;
+        }
+
+        return default;
+    }
+
+    /// <summary>
+    /// Finds the AniDB id for the series with the given title.
+    /// </summary>
+    /// <param name="title">The title of the series to search for.</param>
+    /// <returns>The AniDB id of the series if found; else <c>null</c>.</returns>
+    public Task<string?> FindSeries(string title)
+    {
+        return FindSeries(title, CancellationToken.None);
+    }
+
+    /// <inheritdoc />
+    public async Task<string?> FindSeries(string title, CancellationToken cancellationToken)
+    {
+        await _lock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (!IsLoaded)
             {
-                return info;
+                await Load(cancellationToken).ConfigureAwait(false);
             }
-
-            return default;
+        }
+        finally
+        {
+            _lock.Release();
         }
 
-        /// <summary>
-        /// Finds the AniDB id for the series with the given title.
-        /// </summary>
-        /// <param name="title">The title of the series to search for.</param>
-        /// <returns>The AniDB id of the series if found; else <c>null</c>.</returns>
-        public Task<string?> FindSeries(string title)
-        {
-            return FindSeries(title, CancellationToken.None);
-        }
+        return LookupAniDbId(title) ?? LookupAniDbId(GetComparableName(title));
+    }
 
-        /// <inheritdoc />
-        public async Task<string?> FindSeries(string title, CancellationToken cancellationToken)
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        _lock.Dispose();
+        GC.SuppressFinalize(this);
+    }
+
+    internal static string GetComparableName(string name)
+    {
+        name = name.ToLowerInvariant();
+        name = name.Normalize(NormalizationForm.FormC);
+        var sb = new StringBuilder();
+        foreach (var c in name)
         {
-            await _lock.WaitAsync(cancellationToken).ConfigureAwait(false);
-            try
+            if (c >= 0x2B0 && c <= 0x0333)
             {
-                if (!IsLoaded)
-                {
-                    await Load(cancellationToken).ConfigureAwait(false);
-                }
+                // skip char modifier and diacritics
             }
-            finally
+            else if (Remove.Contains(c, StringComparison.Ordinal))
             {
-                _lock.Release();
+                // skip chars we are removing
             }
-
-            return LookupAniDbId(title) ?? LookupAniDbId(GetComparableName(title));
-        }
-
-        /// <inheritdoc />
-        public void Dispose()
-        {
-            _lock.Dispose();
-            GC.SuppressFinalize(this);
-        }
-
-        internal static string GetComparableName(string name)
-        {
-            name = name.ToLowerInvariant();
-            name = name.Normalize(NormalizationForm.FormC);
-            var sb = new StringBuilder();
-            foreach (var c in name)
+            else if (Spacers.Contains(c, StringComparison.Ordinal))
             {
-                if (c >= 0x2B0 && c <= 0x0333)
-                {
-                    // skip char modifier and diacritics
-                }
-                else if (Remove.Contains(c, StringComparison.Ordinal))
-                {
-                    // skip chars we are removing
-                }
-                else if (Spacers.Contains(c, StringComparison.Ordinal))
-                {
-                    sb.Append(' ');
-                }
-                else if (c == '&')
-                {
-                    sb.Append(" and ");
-                }
-                else
-                {
-                    sb.Append(c);
-                }
+                sb.Append(' ');
             }
-
-            name = sb.ToString();
-            name = name.Replace(", the", string.Empty, StringComparison.Ordinal);
-            name = name.Replace("the ", " ", StringComparison.Ordinal);
-            name = name.Replace(" the ", " ", StringComparison.Ordinal);
-
-            string prevName;
-            do
+            else if (c == '&')
             {
-                prevName = name;
-                name = name.Replace("  ", " ", StringComparison.Ordinal);
-            }
-            while (name.Length != prevName.Length);
-
-            return name.Trim();
-        }
-
-        private static string? LookupAniDbId(string title)
-        {
-            if (_titles != null && _titles.TryGetValue(title, out TitleInfo info))
-            {
-                return info.AniDbId;
-            }
-
-            return null;
-        }
-
-        private static TitleType ParseType(string? type)
-        {
-            return type switch
-            {
-                "main" => TitleType.Main,
-                "official" => TitleType.Official,
-                "short" => TitleType.Short,
-                "syn" => TitleType.Synonym,
-                _ => TitleType.Synonym,
-            };
-        }
-
-        private async Task Load(CancellationToken cancellationToken)
-        {
-            if (_titles == null)
-            {
-                _titles = new Dictionary<string, TitleInfo>(StringComparer.OrdinalIgnoreCase);
+                sb.Append(" and ");
             }
             else
             {
-                _titles.Clear();
-            }
-
-            try
-            {
-                await _downloader.Load(cancellationToken).ConfigureAwait(false);
-                await ReadTitlesFile().ConfigureAwait(false);
-            }
-            catch (Exception e)
-            {
-                _logger.LogError(e, "Failed to load AniDB titles");
+                sb.Append(c);
             }
         }
 
-        private async Task ReadTitlesFile()
+        name = sb.ToString();
+        name = name.Replace(", the", string.Empty, StringComparison.Ordinal);
+        name = name.Replace("the ", " ", StringComparison.Ordinal);
+        name = name.Replace(" the ", " ", StringComparison.Ordinal);
+
+        string prevName;
+        do
         {
-            _logger.LogDebug("Loading AniDB titles");
+            prevName = name;
+            name = name.Replace("  ", " ", StringComparison.Ordinal);
+        }
+        while (name.Length != prevName.Length);
 
-            var titles = _titles;
-            if (titles == null)
+        return name.Trim();
+    }
+
+    private static string? LookupAniDbId(string title)
+    {
+        if (_titles != null && _titles.TryGetValue(title, out TitleInfo info))
+        {
+            return info.AniDbId;
+        }
+
+        return null;
+    }
+
+    private static TitleType ParseType(string? type)
+    {
+        return type switch
+        {
+            "main" => TitleType.Main,
+            "official" => TitleType.Official,
+            "short" => TitleType.Short,
+            "syn" => TitleType.Synonym,
+            _ => TitleType.Synonym,
+        };
+    }
+
+    private async Task Load(CancellationToken cancellationToken)
+    {
+        if (_titles == null)
+        {
+            _titles = new Dictionary<string, TitleInfo>(StringComparer.OrdinalIgnoreCase);
+        }
+        else
+        {
+            _titles.Clear();
+        }
+
+        try
+        {
+            await _downloader.Load(cancellationToken).ConfigureAwait(false);
+            await ReadTitlesFile().ConfigureAwait(false);
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, "Failed to load AniDB titles");
+        }
+    }
+
+    private async Task ReadTitlesFile()
+    {
+        _logger.LogDebug("Loading AniDB titles");
+
+        var titles = _titles;
+        if (titles == null)
+        {
+            return;
+        }
+
+        var titlesFile = _downloader.TitlesFilePath;
+
+        var settings = new XmlReaderSettings
+        {
+            CheckCharacters = false,
+            IgnoreProcessingInstructions = true,
+            IgnoreComments = true,
+            ValidationType = ValidationType.None
+        };
+
+        using (var stream = new StreamReader(titlesFile, Encoding.UTF8))
+        using (var reader = XmlReader.Create(stream, settings))
+        {
+            string? aid = null;
+
+            while (await reader.ReadAsync().ConfigureAwait(false))
             {
-                return;
-            }
-
-            var titlesFile = _downloader.TitlesFilePath;
-
-            var settings = new XmlReaderSettings
-            {
-                CheckCharacters = false,
-                IgnoreProcessingInstructions = true,
-                IgnoreComments = true,
-                ValidationType = ValidationType.None
-            };
-
-            using (var stream = new StreamReader(titlesFile, Encoding.UTF8))
-            using (var reader = XmlReader.Create(stream, settings))
-            {
-                string? aid = null;
-
-                while (await reader.ReadAsync().ConfigureAwait(false))
+                if (reader.NodeType == XmlNodeType.Element)
                 {
-                    if (reader.NodeType == XmlNodeType.Element)
+                    switch (reader.Name)
                     {
-                        switch (reader.Name)
-                        {
-                            case "anime":
-                                reader.MoveToAttribute("aid");
-                                aid = reader.Value;
-                                break;
+                        case "anime":
+                            reader.MoveToAttribute("aid");
+                            aid = reader.Value;
+                            break;
 
-                            case "title":
-                                var title = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
-                                if (!string.IsNullOrEmpty(aid) && !string.IsNullOrEmpty(title))
+                        case "title":
+                            var title = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
+                            if (!string.IsNullOrEmpty(aid) && !string.IsNullOrEmpty(title))
+                            {
+                                var type = ParseType(reader.GetAttribute("type"));
+
+                                if (!titles.TryGetValue(title, out TitleInfo currentTitleInfo) || (int)currentTitleInfo.Type < (int)type)
                                 {
-                                    var type = ParseType(reader.GetAttribute("type"));
-
-                                    if (!titles.TryGetValue(title, out TitleInfo currentTitleInfo) || (int)currentTitleInfo.Type < (int)type)
-                                    {
-                                        titles[title] = new TitleInfo { AniDbId = aid, Type = type, Title = title };
-                                    }
+                                    titles[title] = new TitleInfo { AniDbId = aid, Type = type, Title = title };
                                 }
+                            }
 
-                                break;
-                        }
+                            break;
                     }
                 }
             }
+        }
 
-            var comparable = (from pair in titles
-                              let comp = GetComparableName(pair.Key)
-                              where !titles.ContainsKey(comp)
-                              select new { Title = comp, Id = pair.Value })
-                             .ToArray();
+        var comparable = (from pair in titles
+                          let comp = GetComparableName(pair.Key)
+                          where !titles.ContainsKey(comp)
+                          select new { Title = comp, Id = pair.Value })
+                         .ToArray();
 
-            foreach (var pair in comparable)
-            {
-                titles[pair.Title] = pair.Id;
-            }
+        foreach (var pair in comparable)
+        {
+            titles[pair.Title] = pair.Id;
         }
     }
 }
