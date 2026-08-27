@@ -26,7 +26,7 @@ This plugin adds the metadata provider for [aniDB](https://anidb.net/).
 
 ## Build
 
-1. To build this plugin you will need [.Net 5.x](https://dotnet.microsoft.com/download/dotnet/5.0).
+1. To build this plugin you will need [.Net 9.x](https://dotnet.microsoft.com/download/dotnet/9.0).
 
 2. Build plugin with following command
   ```
