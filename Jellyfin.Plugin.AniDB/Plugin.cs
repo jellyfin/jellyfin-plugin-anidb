@@ -19,6 +19,10 @@ namespace Jellyfin.Plugin.AniDB;
 /// </summary>
 public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
 {
+    // Identify the plugin rather than the service it talks to: AniDB bans by client, so the
+    // header should say what this actually is. Built once, since it never varies.
+    private static readonly ProductInfoHeaderValue _userAgentProduct = new("jellyfin-plugin-anidb", ResolveVersion());
+
     private readonly IHttpClientFactory _httpClientFactory;
 
     /// <summary>
@@ -71,10 +75,24 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
     public HttpClient GetHttpClient()
     {
         var httpClient = _httpClientFactory.CreateClient(NamedClient.Default);
-        httpClient.DefaultRequestHeaders.UserAgent.Add(
-            new ProductInfoHeaderValue(Name, Version.ToString()));
+        httpClient.DefaultRequestHeaders.UserAgent.Add(_userAgentProduct);
 
         return httpClient;
+    }
+
+    /// <summary>
+    /// Resolves the plugin version for the user agent. The assembly version is used rather
+    /// than the informational version because the latter may carry a build metadata suffix,
+    /// which is not a legal product version token and would throw when parsed.
+    /// </summary>
+    /// <returns>The plugin version.</returns>
+    private static string ResolveVersion()
+    {
+        var version = typeof(Plugin).Assembly.GetName().Version;
+
+        return version is null
+            ? "0.0.0.0"
+            : version.ToString();
     }
 
     /// <inheritdoc />
