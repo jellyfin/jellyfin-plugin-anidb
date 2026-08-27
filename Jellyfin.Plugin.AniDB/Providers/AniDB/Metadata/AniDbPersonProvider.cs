@@ -83,7 +83,7 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
             var infos = new List<RemoteImageInfo>();
 
             var person = AniDbSeriesProvider.GetPersonInfo(_paths.CachePath, item.Name);
-            if (person != null && String.IsNullOrEmpty(person.Image))
+            if (person != null && !String.IsNullOrEmpty(person.Image))
             {
                 infos.Add(new RemoteImageInfo
                 {
