@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -7,7 +8,6 @@ using System.Net.Http;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
-using System.Threading.RateLimiting;
 using System.Threading.Tasks;
 using System.Xml;
 using System.Xml.Linq;
@@ -29,21 +29,29 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata;
 /// </summary>
 public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, SeriesInfo>, IHasOrder
 {
-    // AniDB has very low request rate limits, so allow at most one request every two seconds.
-    private static readonly RateLimiter _requestLimiter = new TokenBucketRateLimiter(new TokenBucketRateLimiterOptions
-    {
-        TokenLimit = 1,
-        TokensPerPeriod = 1,
-        ReplenishmentPeriod = TimeSpan.FromSeconds(2),
-        QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-        QueueLimit = int.MaxValue,
-        AutoReplenishment = true
-    });
+    // AniDB allows one HTTP API request every 2-4 seconds; sending sequential requests
+    // closer together than 2500ms triggers an automatic ban, so that is the floor here.
+    // Bucket- and window-based limiters cannot express this: they replenish on a fixed
+    // cadence that is independent of when tokens are consumed, so a plugin that has been
+    // idle long enough to hold a full bucket can issue two requests back to back across a
+    // replenishment tick. Gate on the time elapsed since the previous request instead, and
+    // measure it with the monotonic clock so that system time changes cannot shorten it.
+    private static readonly TimeSpan _minimumRequestInterval = TimeSpan.FromMilliseconds(2500);
+    private static readonly long _minimumRequestIntervalTicks = (long)(Stopwatch.Frequency * _minimumRequestInterval.TotalSeconds);
+    private static readonly TimeSpan _minimumDelay = TimeSpan.FromMilliseconds(1);
+    private static readonly SemaphoreSlim _requestGate = new(1, 1);
 
     private static readonly int[] IgnoredTagIds = [6, 22, 23, 60, 128, 129, 185, 216, 242, 255, 268, 269, 289];
     private static readonly Regex AniDbUrlRegex = MyRegex();
     private static readonly Regex _errorRegex = new(@"<error code=""[0-9]+"">[a-zA-Z]+</error>", RegexOptions.Compiled);
     private static readonly CompositeFormat _seriesQueryUrlFormat = CompositeFormat.Parse("http://api.anidb.net:9001/httpapi?request=anime&client={0}&clientver=1&protover=1&aid={1}");
+
+    /// <summary>
+    /// The monotonic timestamp before which no further AniDB request may be issued.
+    /// Guarded by <see cref="_requestGate"/>.
+    /// </summary>
+    private static long _nextRequestTimestamp = Stopwatch.GetTimestamp();
+
     private readonly IApplicationPaths _appPaths;
 
     private readonly Dictionary<string, PersonKind> _typeMappings = new()
@@ -193,6 +201,7 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     /// <inheritdoc />
     public async Task<HttpResponseMessage> GetImageResponse(string url, CancellationToken cancellationToken)
     {
+        await WaitForRequestSlot(cancellationToken).ConfigureAwait(false);
         var httpClient = Plugin.Instance.GetHttpClient();
 
         return await httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
@@ -229,8 +238,28 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
     internal static async Task WaitForRequestSlot(CancellationToken cancellationToken)
     {
-        using var lease = await _requestLimiter.AcquireAsync(1, cancellationToken).ConfigureAwait(false);
+        // The gate is held across the wait so that concurrent callers queue behind each
+        // other rather than all sleeping in parallel and then firing at the same moment.
+        await _requestGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            // Task.Delay may fire fractionally early, so re-check rather than assuming a
+            // single delay was enough to clear the interval.
+            for (var remaining = GetRemainingInterval(); remaining > TimeSpan.Zero; remaining = GetRemainingInterval())
+            {
+                await Task.Delay(remaining < _minimumDelay ? _minimumDelay : remaining, cancellationToken).ConfigureAwait(false);
+            }
+
+            _nextRequestTimestamp = Stopwatch.GetTimestamp() + _minimumRequestIntervalTicks;
+        }
+        finally
+        {
+            _requestGate.Release();
+        }
     }
+
+    private static TimeSpan GetRemainingInterval()
+        => Stopwatch.GetElapsedTime(Stopwatch.GetTimestamp(), _nextRequestTimestamp);
 
     private async Task FetchSeriesInfo(MetadataResult<Series> result, string seriesDataPath, string preferredMetadataLangauge)
     {
