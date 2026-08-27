@@ -1,107 +1,59 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Net.Http;
-using System.Net.Http.Headers;
 using MediaBrowser.Common.Configuration;
-using MediaBrowser.Common.Net;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Providers;
 
-namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata
+namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata;
+
+/// <summary>
+/// The AniDB metadata provider for people.
+/// </summary>
+/// <param name="paths">Instance of the <see cref="IApplicationPaths"/> interface.</param>
+public class AniDbPersonProvider(IApplicationPaths paths) : IRemoteMetadataProvider<Person, PersonLookupInfo>
 {
-    public class AniDbPersonProvider : IRemoteMetadataProvider<Person, PersonLookupInfo>
+    private readonly IApplicationPaths _paths = paths;
+
+    /// <inheritdoc />
+    public string Name => "AniDB";
+
+    /// <inheritdoc />
+    public Task<MetadataResult<Person>> GetMetadata(PersonLookupInfo info, CancellationToken cancellationToken)
     {
-        private readonly IApplicationPaths _paths;
+        var result = new MetadataResult<Person>();
 
-        public AniDbPersonProvider(IApplicationPaths paths)
+        if (!string.IsNullOrEmpty(info.ProviderIds.GetValueOrDefault(ProviderNames.AniDb)))
         {
-            _paths = paths;
-        }
-
-        public Task<MetadataResult<Person>> GetMetadata(PersonLookupInfo info, CancellationToken cancellationToken)
-        {
-            var result = new MetadataResult<Person>();
-
-            if (!string.IsNullOrEmpty(info.ProviderIds.GetOrDefault(ProviderNames.AniDb)))
-            {
-                return Task.FromResult(result);
-            }
-
-            var person = AniDbSeriesProvider.GetPersonInfo(_paths.CachePath, info.Name);
-            if (!string.IsNullOrEmpty(person?.Id))
-            {
-                result.Item = new Person();
-                result.HasMetadata = true;
-
-                result.Item.SetProviderId(ProviderNames.AniDb, person.Id);
-            }
-
             return Task.FromResult(result);
         }
 
-        public string Name => "AniDB";
-
-        public Task<IEnumerable<RemoteSearchResult>> GetSearchResults(PersonLookupInfo searchInfo, CancellationToken cancellationToken)
+        var person = AniDbSeriesProvider.GetPersonInfo(_paths.CachePath, info.Name);
+        if (!string.IsNullOrEmpty(person?.Id))
         {
-            return Task.FromResult(Enumerable.Empty<RemoteSearchResult>());
+            result.Item = new Person();
+            result.HasMetadata = true;
+
+            result.Item.SetProviderId(ProviderNames.AniDb, person.Id);
         }
 
-        public Task<HttpResponseMessage> GetImageResponse(string url, CancellationToken cancellationToken)
-        {
-            throw new NotImplementedException();
-        }
+        return Task.FromResult(result);
     }
 
-    public class AniDbPersonImageProvider : IRemoteImageProvider
+    /// <inheritdoc />
+    public Task<IEnumerable<RemoteSearchResult>> GetSearchResults(PersonLookupInfo searchInfo, CancellationToken cancellationToken)
     {
-        private readonly IApplicationPaths _paths;
+        return Task.FromResult(Enumerable.Empty<RemoteSearchResult>());
+    }
 
-        public AniDbPersonImageProvider(IApplicationPaths paths)
-        {
-            _paths = paths;
-        }
-
-        public bool Supports(BaseItem item)
-        {
-            return item is Person;
-        }
-
-        public string Name => "AniDB";
-
-        public IEnumerable<ImageType> GetSupportedImages(BaseItem item)
-        {
-            yield return ImageType.Primary;
-        }
-
-        public Task<IEnumerable<RemoteImageInfo>> GetImages(BaseItem item, CancellationToken cancellationToken)
-        {
-            var infos = new List<RemoteImageInfo>();
-
-            var person = AniDbSeriesProvider.GetPersonInfo(_paths.CachePath, item.Name);
-            if (person != null)
-            {
-                infos.Add(new RemoteImageInfo
-                {
-                    Url = person.Image,
-                    Type = ImageType.Primary,
-                    ProviderName = Name
-                });
-            }
-
-            return Task.FromResult<IEnumerable<RemoteImageInfo>>(infos);
-        }
-
-        public async Task<HttpResponseMessage> GetImageResponse(string url, CancellationToken cancellationToken)
-        {
-            await AniDbSeriesProvider.RequestLimiter.Tick().ConfigureAwait(false);
-            var httpClient = Plugin.Instance.GetHttpClient();
-
-            return await httpClient.GetAsync(url).ConfigureAwait(false);
-        }
+    /// <inheritdoc />
+    public Task<HttpResponseMessage> GetImageResponse(string url, CancellationToken cancellationToken)
+    {
+        throw new NotSupportedException();
     }
 }

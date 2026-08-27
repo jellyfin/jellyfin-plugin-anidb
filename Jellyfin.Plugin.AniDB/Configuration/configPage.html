@@ -64,14 +64,9 @@
                             </select>
                         </div>
                         <div class="inputContainer">
-                            <label class="inputeLabel inputLabelUnfocused" for="chkAniDbRateLimit">AniDB Rate Limit</label>
-                            <input id="chkAniDbRateLimit" name="chkAniDbRateLimit" type="number" is="emby-input" min="0" />
-                            <div class="fieldDescription">This will prevent IP bans for requesting data too quickly.</div>
-                        </div>
-                        <div class="inputContainer">
                             <label class="inputeLabel inputLabelUnfocused" for="chkMaxCacheAge">Maximum Cache Age</label>
-                            <input id="chkMaxCacheAge" name="chkMaxCacheAge" type="number" is="emby-input" min="0" />
-                            <div class="fieldDescription">How many days cached series metadata will be reused before fetching new metatdata from AniDB.</div>
+                            <input id="chkMaxCacheAge" name="chkMaxCacheAge" type="number" is="emby-input" min="7" />
+                            <div class="fieldDescription">How many days cached series metadata will be reused before fetching new metatdata from AniDB. Minimum 7 days: AniDB allows only a low number of requests per IP per day, and shorter windows will get your server banned.</div>
                         </div>
                         <div class="checkboxContainer checkboxContainer-withDescription">
                             <label class="emby-checkbox-label">
@@ -104,7 +99,6 @@
                             document.getElementById('chkTitleCaseGenres').checked = config.TitleCaseGenres;
                             document.getElementById('chkTidyGenres').checked = config.TidyGenreList;
                             document.getElementById('animeDefaultGenre').value = config.AnimeDefaultGenre;
-                            document.getElementById('chkAniDbRateLimit').value = config.AniDbRateLimit;
                             document.getElementById('chkMaxCacheAge').value = config.MaxCacheAge;
                             document.getElementById('chkAniDbReplaceGraves').checked = config.AniDbReplaceGraves;
 
@@ -124,7 +118,6 @@
                             config.TitleCaseGenres = document.getElementById('chkTitleCaseGenres').checked;
                             config.TidyGenreList = document.getElementById('chkTidyGenres').checked;
                             config.AnimeDefaultGenre = document.getElementById('animeDefaultGenre').value;
-                            config.AniDbRateLimit = document.getElementById('chkAniDbRateLimit').value;
                             config.MaxCacheAge = document.getElementById('chkMaxCacheAge').value;
                             config.AniDbReplaceGraves = document.getElementById('chkAniDbReplaceGraves').checked;
 
