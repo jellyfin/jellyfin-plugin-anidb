@@ -13,12 +13,6 @@ namespace Jellyfin.Plugin.AniDB.Providers;
 /// </summary>
 internal static partial class Equals_check
 {
-    private static readonly Regex _whitespaceRegex = MyRegex();
-    private static readonly Regex _specialCharacterRegex = new(@"[!,–—_=~'`‚‘’„“”:;␣#@<>}\]\/\-]", RegexOptions.Compiled);
-    private static readonly Regex _sAtEndBoundaryRegex = new(@"s\b", RegexOptions.Compiled);
-    private static readonly Regex _titleRegex = new(@"<title.*>([^<]+)</title>", RegexOptions.Compiled);
-    private static readonly Regex _stripYearRegex = new(@" \([0-9]{4}\)$", RegexOptions.Compiled);
-
     /// <summary>
     /// Cut p(%) away from the string.
     /// </summary>
@@ -69,13 +63,13 @@ internal static partial class Equals_check
 
         // whitespace
         a = a.Replace(@"\ ", ".?.?.?", StringComparison.Ordinal);
-        a = _whitespaceRegex.Replace(a, ".?.?.?");
+        a = WhitespaceRegex().Replace(a, ".?.?.?");
 
         // other characters
-        a = _specialCharacterRegex.Replace(a, ".?");
+        a = SpecialCharacterRegex().Replace(a, ".?");
 
         // "words"
-        a = _sAtEndBoundaryRegex.Replace(a, ".?s");
+        a = SAtEndBoundaryRegex().Replace(a, ".?s");
         a = a.Replace("Gekijyouban", "Gekijouban", StringComparison.OrdinalIgnoreCase);
         a = a.Replace("Mahoutsukai", "Mahou ?tsukai", StringComparison.OrdinalIgnoreCase);
         a = a.Replace("to aru", "to ?aru", StringComparison.OrdinalIgnoreCase);
@@ -132,7 +126,7 @@ internal static partial class Equals_check
             string xml = await File.ReadAllTextAsync(GetAnidbXml(), cancellationToken).ConfigureAwait(false);
             string s = "-";
             int x = 0;
-            string strippedName = _stripYearRegex.Replace(name, string.Empty);
+            string strippedName = StripYearRegex().Replace(name, string.Empty);
             Regex searchRegex = new Regex(@"<anime aid=""([0-9]+)"">(?>[^<>]+|<(?!\/anime>)[^<>]*>)*?.*" + FuzzyRegexEscape(ShortenString(strippedName, 6, 20)), RegexOptions.IgnoreCase | RegexOptions.Compiled);
             while (!string.IsNullOrEmpty(s))
             {
@@ -177,9 +171,21 @@ internal static partial class Equals_check
         int lowestDistance = Plugin.Instance.Configuration.TitleSimilarityThreshold;
         string currentId = string.Empty;
 
+        // Index every entry once with a constant pattern, rather than building and compiling a
+        // fresh regex per candidate id inside the loop. Keep the first entry for an id so the
+        // behaviour matches the previous "first match wins" lookup.
+        var entriesById = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (Match entry in AnimeEntryRegex().Matches(xml))
+        {
+            entriesById.TryAdd(entry.Groups[1].Value, entry.Groups[2].Value);
+        }
+
         foreach (string id in results)
         {
-            string nameXmlFromId = OneLineRegex(new Regex(@"<anime aid=""" + id + @"""((?s).*?)<\/anime>", RegexOptions.Compiled), xml);
+            if (!entriesById.TryGetValue(id, out string? nameXmlFromId))
+            {
+                continue;
+            }
 
             string[] lines = nameXmlFromId.Split(
                 ["\r\n", "\r", "\n"],
@@ -187,7 +193,7 @@ internal static partial class Equals_check
 
             foreach (string line in lines)
             {
-                string nameFromId = OneLineRegex(_titleRegex, line);
+                string nameFromId = OneLineRegex(TitleRegex(), line);
 
                 if (!string.IsNullOrEmpty(nameFromId))
                 {
@@ -262,6 +268,21 @@ internal static partial class Equals_check
         return AniDbTitleDownloader.StaticTitlesFilePath;
     }
 
-    [GeneratedRegex(@"\s", RegexOptions.Compiled)]
-    private static partial Regex MyRegex();
+    [GeneratedRegex(@"\s")]
+    private static partial Regex WhitespaceRegex();
+
+    [GeneratedRegex(@"[!,–—_=~'`‚‘’„“”:;␣#@<>}\]\/\-]")]
+    private static partial Regex SpecialCharacterRegex();
+
+    [GeneratedRegex(@"s\b")]
+    private static partial Regex SAtEndBoundaryRegex();
+
+    [GeneratedRegex(@"<title.*>([^<]+)</title>")]
+    private static partial Regex TitleRegex();
+
+    [GeneratedRegex(@" \([0-9]{4}\)$")]
+    private static partial Regex StripYearRegex();
+
+    [GeneratedRegex(@"<anime aid=""([0-9]+)""((?s).*?)</anime>")]
+    private static partial Regex AnimeEntryRegex();
 }
