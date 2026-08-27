@@ -80,4 +80,17 @@ public class PluginConfiguration : BasePluginConfiguration
     }
 
     public bool AniDbReplaceGraves { get; set; }
+
+    /// <summary>
+    /// Gets or sets the UTC time at which an AniDB ban is assumed to lapse. Persisted so
+    /// that restarting the server does not hand a banned client a fresh allowance of
+    /// requests. This is runtime state rather than a user setting.
+    /// </summary>
+    public DateTime AniDbBannedUntilUtc { get; set; }
+
+    /// <summary>
+    /// Gets or sets the backoff, in minutes, that will be applied to the next detected
+    /// AniDB ban. This is runtime state rather than a user setting.
+    /// </summary>
+    public int AniDbBanBackoffMinutes { get; set; }
 }
