@@ -21,6 +21,7 @@ using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Providers;
+using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata;
 
@@ -41,6 +42,15 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     private static readonly TimeSpan _minimumDelay = TimeSpan.FromMilliseconds(1);
     private static readonly SemaphoreSlim _requestGate = new(1, 1);
 
+    // An AniDB ban is temporary but its remaining time cannot be queried, and reported
+    // durations range from 15 minutes to 24 hours depending on how badly the limit was
+    // exceeded. Repeatedly probing a banned server extends the ban, so back off for
+    // twice as long after each consecutive ban and reset once a request succeeds.
+    private static readonly TimeSpan _initialBanBackoff = TimeSpan.FromMinutes(30);
+    private static readonly TimeSpan _maximumBanBackoff = TimeSpan.FromHours(24);
+    private static readonly Regex _bannedRegex = new("banned", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Lock _banLock = new();
+
     private static readonly int[] IgnoredTagIds = [6, 22, 23, 60, 128, 129, 185, 216, 242, 255, 268, 269, 289];
     private static readonly Regex AniDbUrlRegex = MyRegex();
     private static readonly Regex _errorRegex = new(@"<error[^>]*>.*?</error>", RegexOptions.Compiled | RegexOptions.Singleline);
@@ -51,6 +61,30 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     /// Guarded by <see cref="_requestGate"/>.
     /// </summary>
     private static long _nextRequestTimestamp = Stopwatch.GetTimestamp();
+
+    /// <summary>
+    /// The UTC time at which the current ban is assumed to have lapsed. This is wall clock
+    /// rather than the monotonic clock used for request spacing, because a ban outlives the
+    /// process and has to stay meaningful across a restart. Guarded by <see cref="_banLock"/>.
+    /// </summary>
+    private static DateTime _banUntilUtc = DateTime.MinValue;
+
+    /// <summary>
+    /// How long the next detected ban will be waited out for. Guarded by <see cref="_banLock"/>.
+    /// </summary>
+    private static TimeSpan _currentBanBackoff = _initialBanBackoff;
+
+    /// <summary>
+    /// Whether a ban has been reported and no request has succeeded since. Guarded by
+    /// <see cref="_banLock"/>, and read outside it only as a logging fast path.
+    /// </summary>
+    private static bool _banActive;
+
+    /// <summary>
+    /// Whether the "resuming requests" message has already been logged for the current
+    /// ban, so that it is not repeated for every waiting request. Guarded by <see cref="_banLock"/>.
+    /// </summary>
+    private static bool _resumeLogged;
 
     private readonly IApplicationPaths _appPaths;
 
@@ -76,6 +110,11 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
 
     /// <inheritdoc />
     public string Name => "AniDB";
+
+    /// <summary>
+    /// Gets or sets the logger used to report the plugin-wide AniDB ban state.
+    /// </summary>
+    internal static ILogger<AniDbSeriesProvider>? Logger { get; set; }
 
     private IAniDbTitleMatcher TitleMatcher { get; set; }
 
@@ -225,6 +264,14 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
 
         if (!fileInfo.Exists || isEmpty || isStale)
         {
+            // A stale cache entry is still far better than no metadata at all, so while
+            // banned keep reading from disk rather than spending a request that would only
+            // be refused and lengthen the ban.
+            if (fileInfo.Exists && !isEmpty && GetRemainingBanTime() > TimeSpan.Zero)
+            {
+                return seriesDataPath;
+            }
+
             await DownloadSeriesData(seriesId, seriesDataPath, appPaths.CachePath, cancellationToken).ConfigureAwait(false);
         }
 
@@ -238,6 +285,8 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
     internal static async Task WaitForRequestSlot(CancellationToken cancellationToken)
     {
+        ThrowIfBanned();
+
         // The gate is held across the wait so that concurrent callers queue behind each
         // other rather than all sleeping in parallel and then firing at the same moment.
         await _requestGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -250,11 +299,188 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
                 await Task.Delay(remaining < _minimumDelay ? _minimumDelay : remaining, cancellationToken).ConfigureAwait(false);
             }
 
+            // A caller ahead of this one in the queue may have been banned while this one
+            // waited, so re-check instead of draining the whole backlog into a banned server.
+            ThrowIfBanned();
+
             _nextRequestTimestamp = Stopwatch.GetTimestamp() + _minimumRequestIntervalTicks;
         }
         finally
         {
             _requestGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Gets the time remaining on the current AniDB ban, or <see cref="TimeSpan.Zero"/>
+    /// when the plugin is not currently banned.
+    /// </summary>
+    /// <returns>The remaining ban time.</returns>
+    internal static TimeSpan GetRemainingBanTime()
+    {
+        lock (_banLock)
+        {
+            var remaining = _banUntilUtc - DateTime.UtcNow;
+
+            return remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero;
+        }
+    }
+
+    /// <summary>
+    /// Restores the ban recorded by a previous session, so that restarting the server does
+    /// not hand a banned client a fresh allowance of requests.
+    /// </summary>
+    /// <param name="configuration">The plugin configuration holding the persisted state.</param>
+    internal static void RestoreBanState(PluginConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        lock (_banLock)
+        {
+            _currentBanBackoff = configuration.AniDbBanBackoffMinutes > 0
+                ? TimeSpan.FromMinutes(Math.Min(configuration.AniDbBanBackoffMinutes, _maximumBanBackoff.TotalMinutes))
+                : _initialBanBackoff;
+
+            var remaining = configuration.AniDbBannedUntilUtc - DateTime.UtcNow;
+            if (remaining <= TimeSpan.Zero)
+            {
+                _banUntilUtc = DateTime.MinValue;
+                _banActive = false;
+
+                return;
+            }
+
+            // Guard against a persisted time that a clock change has pushed implausibly far
+            // out; never wait longer than a ban could actually last.
+            if (remaining > _maximumBanBackoff)
+            {
+                remaining = _maximumBanBackoff;
+            }
+
+            _banUntilUtc = DateTime.UtcNow + remaining;
+            _banActive = true;
+            _resumeLogged = false;
+
+            Logger?.LogWarning(
+                "An AniDB ban recorded before the last restart is still in force. AniDB requests stay paused for {RetryAfter}",
+                remaining);
+        }
+    }
+
+    /// <summary>
+    /// Records that AniDB reported a ban and returns how long it will be waited out for.
+    /// </summary>
+    /// <returns>The backoff applied for this ban.</returns>
+    private static TimeSpan RegisterBan()
+    {
+        lock (_banLock)
+        {
+            var backoff = _currentBanBackoff;
+            _banUntilUtc = DateTime.UtcNow + backoff;
+
+            var escalated = backoff + backoff;
+            _currentBanBackoff = escalated > _maximumBanBackoff ? _maximumBanBackoff : escalated;
+
+            if (_banActive)
+            {
+                Logger?.LogWarning(
+                    "AniDB is still refusing requests. All AniDB requests remain paused, now for a further {RetryAfter}",
+                    backoff);
+            }
+            else
+            {
+                Logger?.LogWarning(
+                    "AniDB has banned this client. Pausing all AniDB requests for {RetryAfter}. Cached metadata will continue to be used in the meantime",
+                    backoff);
+            }
+
+            _banActive = true;
+            _resumeLogged = false;
+            PersistBanState();
+
+            return backoff;
+        }
+    }
+
+    /// <summary>
+    /// Clears the ban state after AniDB served a valid response.
+    /// </summary>
+    private static void RegisterSuccess()
+    {
+        lock (_banLock)
+        {
+            // Every successful download lands here, so do nothing unless a ban was actually
+            // in effect. Otherwise the configuration would be rewritten once per series.
+            if (!_banActive && _banUntilUtc == DateTime.MinValue && _currentBanBackoff == _initialBanBackoff)
+            {
+                return;
+            }
+
+            if (_banActive)
+            {
+                Logger?.LogInformation("AniDB accepted a request again, so the ban has lifted. Resuming normal metadata fetching");
+            }
+
+            _banUntilUtc = DateTime.MinValue;
+            _currentBanBackoff = _initialBanBackoff;
+            _banActive = false;
+            _resumeLogged = false;
+            PersistBanState();
+        }
+    }
+
+    private static void ThrowIfBanned()
+    {
+        var remaining = GetRemainingBanTime();
+        if (remaining <= TimeSpan.Zero)
+        {
+            // The backoff has elapsed. Whether the ban has actually lifted is only known
+            // once a request succeeds, so announce the retry once rather than per request.
+            if (Volatile.Read(ref _banActive))
+            {
+                lock (_banLock)
+                {
+                    if (_banActive && !_resumeLogged)
+                    {
+                        _resumeLogged = true;
+                        Logger?.LogInformation("The AniDB ban backoff has elapsed. Retrying AniDB requests");
+                    }
+                }
+            }
+
+            return;
+        }
+
+        throw new AniDbBannedException(
+            string.Format(CultureInfo.InvariantCulture, "AniDB has banned this client; no request will be sent for another {0}.", remaining))
+        {
+            RetryAfter = remaining
+        };
+    }
+
+    /// <summary>
+    /// Writes the current ban state to the plugin configuration. Must be called under
+    /// <see cref="_banLock"/>.
+    /// </summary>
+    private static void PersistBanState()
+    {
+        var plugin = Plugin.Instance;
+        if (plugin is null)
+        {
+            return;
+        }
+
+        try
+        {
+            plugin.Configuration.AniDbBannedUntilUtc = _banUntilUtc;
+            plugin.Configuration.AniDbBanBackoffMinutes = (int)_currentBanBackoff.TotalMinutes;
+            plugin.SaveConfiguration();
+        }
+        catch (Exception ex)
+        {
+            // Losing the record only costs the ban its ability to outlive a restart, so this
+            // must not be allowed to fail the metadata request that discovered it.
+            Logger?.LogWarning(ex, "Could not persist the AniDB ban state, so it will not survive a restart");
         }
     }
 
@@ -688,6 +914,18 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
         var errorRegexMatch = _errorRegex.Match(text);
         if (errorRegexMatch.Success)
         {
+            // A ban is reported as either <error>Banned</error> or <error code="500">banned</error>.
+            if (_bannedRegex.IsMatch(errorRegexMatch.Value))
+            {
+                var retryAfter = RegisterBan();
+
+                throw new AniDbBannedException(
+                    string.Format(CultureInfo.InvariantCulture, "AniDB has banned this client; pausing all AniDB requests for {0}.", retryAfter))
+                {
+                    RetryAfter = retryAfter
+                };
+            }
+
             throw new InvalidOperationException("AniDB API error " + errorRegexMatch.Value);
         }
 
@@ -695,6 +933,8 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
         {
             throw new InvalidOperationException("AniDB returned an empty response for anime " + aid);
         }
+
+        RegisterSuccess();
 
         // The payload is known good, so the previous cache may now be replaced.
         Directory.CreateDirectory(directory);

@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using Jellyfin.Plugin.AniDB.Configuration;
 using Jellyfin.Plugin.AniDB.Providers.AniDB.Identity;
+using Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Net;
 using MediaBrowser.Common.Plugins;
@@ -27,17 +28,24 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
     /// <param name="xmlSerializer">Instance of the <see cref="IXmlSerializer"/> interface.</param>
     /// <param name="matcherLogger">Instance of the <see cref="ILogger{AniDbTitleMatcher}"/> interface.</param>
     /// <param name="downloaderLogger">Instance of the <see cref="ILogger{AniDbTitleDownloader}"/> interface.</param>
+    /// <param name="seriesLogger">Instance of the <see cref="ILogger{AniDbSeriesProvider}"/> interface.</param>
     /// <param name="httpClientFactory">Instance of the <see cref="IHttpClientFactory"/> interface.</param>
     public Plugin(
         IApplicationPaths applicationPaths,
         IXmlSerializer xmlSerializer,
         ILogger<AniDbTitleMatcher> matcherLogger,
         ILogger<AniDbTitleDownloader> downloaderLogger,
+        ILogger<AniDbSeriesProvider> seriesLogger,
         IHttpClientFactory httpClientFactory)
         : base(applicationPaths, xmlSerializer)
     {
         Instance = this;
         _httpClientFactory = httpClientFactory;
+
+        // The AniDB ban state is global to the plugin, so its logger has to be too. The
+        // logger must be in place before the ban is restored, or the warning is lost.
+        AniDbSeriesProvider.Logger = seriesLogger;
+        AniDbSeriesProvider.RestoreBanState(Configuration);
 
         AniDbTitleMatcher.DefaultInstance = new AniDbTitleMatcher(
             matcherLogger,
