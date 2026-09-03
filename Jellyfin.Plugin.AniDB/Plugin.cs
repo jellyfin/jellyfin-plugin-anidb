@@ -1,12 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
-using System.Net.Http.Headers;
 using Jellyfin.Plugin.AniDB.Configuration;
 using Jellyfin.Plugin.AniDB.Providers.AniDB.Identity;
 using Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata;
 using MediaBrowser.Common.Configuration;
-using MediaBrowser.Common.Net;
 using MediaBrowser.Common.Plugins;
 using MediaBrowser.Model.Plugins;
 using MediaBrowser.Model.Serialization;
@@ -19,9 +17,11 @@ namespace Jellyfin.Plugin.AniDB;
 /// </summary>
 public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
 {
-    // Identify the plugin rather than the service it talks to: AniDB bans by client, so the
-    // header should say what this actually is. Built once, since it never varies.
-    private static readonly ProductInfoHeaderValue _userAgentProduct = new("jellyfin-plugin-anidb", ResolveVersion());
+    /// <summary>
+    /// The name of the HTTP client <see cref="PluginServiceRegistrator"/> registers with the
+    /// plugin's user agent, and that every AniDB request is sent with.
+    /// </summary>
+    public const string HttpClientName = "AniDB";
 
     private readonly IHttpClientFactory _httpClientFactory;
 
@@ -46,8 +46,8 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
         Instance = this;
         _httpClientFactory = httpClientFactory;
 
-        // The AniDB ban state is global to the plugin, so its logger has to be too. The
-        // logger must be in place before the ban is restored, or the warning is lost.
+        // Ban state is global to the plugin, so its logger has to be too, and has to be set
+        // before the ban is restored or the warning is lost.
         AniDbSeriesProvider.Logger = seriesLogger;
         AniDbSeriesProvider.RestoreBanState(Configuration);
 
@@ -73,38 +73,18 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
     /// </summary>
     /// <returns>The configured <see cref="HttpClient"/>.</returns>
     public HttpClient GetHttpClient()
-    {
-        var httpClient = _httpClientFactory.CreateClient(NamedClient.Default);
-        httpClient.DefaultRequestHeaders.UserAgent.Add(_userAgentProduct);
-
-        return httpClient;
-    }
-
-    /// <summary>
-    /// Resolves the plugin version for the user agent. The assembly version is used rather
-    /// than the informational version because the latter may carry a build metadata suffix,
-    /// which is not a legal product version token and would throw when parsed.
-    /// </summary>
-    /// <returns>The plugin version.</returns>
-    private static string ResolveVersion()
-    {
-        var version = typeof(Plugin).Assembly.GetName().Version;
-
-        return version is null
-            ? "0.0.0.0"
-            : version.ToString();
-    }
+        => _httpClientFactory.CreateClient(HttpClientName);
 
     /// <inheritdoc />
     public IEnumerable<PluginPageInfo> GetPages()
     {
-        return new[]
-        {
+        return
+        [
             new PluginPageInfo
             {
                 Name = Name,
                 EmbeddedResourcePath = GetType().Namespace + ".Configuration.configPage.html"
             }
-        };
+        ];
     }
 }

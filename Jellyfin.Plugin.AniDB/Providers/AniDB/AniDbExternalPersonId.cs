@@ -1,4 +1,4 @@
-using MediaBrowser.Controller.Entities.TV;
+using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Providers;
@@ -6,9 +6,9 @@ using MediaBrowser.Model.Providers;
 namespace Jellyfin.Plugin.AniDB.Providers.AniDB;
 
 /// <summary>
-/// The AniDB external id for episodes.
+/// The AniDB external id for people.
 /// </summary>
-public class AniDbExternalEpisodeId : IExternalId
+public class AniDbExternalPersonId : IExternalId
 {
     /// <inheritdoc />
     public string ProviderName
@@ -20,9 +20,9 @@ public class AniDbExternalEpisodeId : IExternalId
 
     /// <inheritdoc />
     public ExternalIdMediaType? Type
-        => ExternalIdMediaType.Episode;
+        => ExternalIdMediaType.Person;
 
     /// <inheritdoc />
     public bool Supports(IHasProviderIds item)
-        => item is Episode;
+        => item is Person;
 }

@@ -73,7 +73,7 @@ public class AniDbImageProvider(IApplicationPaths appPaths) : IRemoteImageProvid
     /// <inheritdoc />
     public IEnumerable<ImageType> GetSupportedImages(BaseItem item)
     {
-        return new[] { ImageType.Primary };
+        return [ImageType.Primary];
     }
 
     /// <inheritdoc />

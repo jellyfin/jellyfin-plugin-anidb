@@ -10,7 +10,7 @@ using Microsoft.Extensions.Logging;
 namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Identity;
 
 /// <summary>
-/// The AniDbTitleDownloader class downloads the anime titles file from AniDB and stores it.
+/// Downloads the anime titles file from AniDB and stores it.
 /// </summary>
 public class AniDbTitleDownloader : IAniDbTitleDownloader
 {
@@ -76,7 +76,7 @@ public class AniDbTitleDownloader : IAniDbTitleDownloader
         var titlesFile = StaticTitlesFilePath;
         var titlesFileInfo = new FileInfo(titlesFile);
 
-        // download titles if we do not already have them, or have not updated for a week
+        // Download when the file is missing or has not been updated for a week.
         if (!titlesFileInfo.Exists || (DateTime.UtcNow - titlesFileInfo.LastWriteTimeUtc).TotalDays > 7)
         {
             await DownloadTitlesStatic(titlesFile, cancellationToken).ConfigureAwait(false);
@@ -89,7 +89,7 @@ public class AniDbTitleDownloader : IAniDbTitleDownloader
         var titlesFile = TitlesFilePath;
         var titlesFileInfo = new FileInfo(titlesFile);
 
-        // download titles if we do not already have them, or have not updated for a week
+        // Download when the file is missing or has not been updated for a week.
         if (!titlesFileInfo.Exists || (DateTime.UtcNow - titlesFileInfo.LastWriteTimeUtc).TotalDays > 7)
         {
             await DownloadTitles(titlesFile, cancellationToken).ConfigureAwait(false);
@@ -108,14 +108,14 @@ public class AniDbTitleDownloader : IAniDbTitleDownloader
         var httpClient = Plugin.Instance.GetHttpClient();
         await AniDbSeriesProvider.WaitForRequestSlot(cancellationToken).ConfigureAwait(false);
 
-        // Decompress into a temporary file and only swap it in once it is complete. A ban is
-        // answered with a plain <error> document rather than gzip, which would otherwise
-        // truncate the existing titles file that every title lookup depends on.
+        // Decompress into a temporary file and swap it in once complete. A ban is answered
+        // with a plain <error> document rather than gzip, which would otherwise truncate the
+        // titles file every lookup depends on.
         var temporaryFile = titlesFile + ".tmp";
 
         try
         {
-            // The URL for retrieving a list of all anime titles and their AniDB IDs.
+            // Every anime title and its AniDB id.
             using (var stream = await httpClient.GetStreamAsync(new Uri("https://anidb.net/api/anime-titles.xml.gz"), cancellationToken).ConfigureAwait(false))
             using (var unzipped = new GZipStream(stream, CompressionMode.Decompress))
             using (var writer = File.Open(temporaryFile, FileMode.Create, FileAccess.Write))

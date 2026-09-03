@@ -9,6 +9,54 @@
         <div id="animeConfigurationPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox">
             <div data-role="content">
                 <div class="content-primary">
+                    <style>
+                        .anidbNotice { border-left: 0.25em solid #cb272a; padding: 0.6em 1em; margin: 0 0 1.5em 0; background: rgba(203, 39, 42, 0.08); }
+                        .anidbInfo { border-left-color: #2256f2; background: rgba(34, 86, 242, 0.08); }
+                        .anidbNotice h3 { margin: 0 0 0.4em 0; }
+                        .anidbNotice p { margin: 0.4em 0; }
+                        .anidbStatus { border: 0.075em solid rgba(127, 127, 127, 0.4); border-radius: 0.25em; padding: 0.6em 1em; margin: 0 0 1.5em 0; }
+                        .anidbStatus h3 { margin: 0 0 0.5em 0; }
+                        .anidbStatusLine { display: flex; align-items: baseline; margin: 0.25em 0; }
+                        .anidbStatusLine dt { flex: 0 0 16em; opacity: 0.7; }
+                        .anidbStatusLine dd { margin: 0; }
+                        .anidbStatusState { font-weight: 600; }
+                        .anidbStatusState-ok { color: #55a655; }
+                        .anidbStatusState-banned { color: #cb272a; }
+                        .anidbStatusCheck { margin: 0.9em 0 0 0; }
+                        .anidbStatusCheck button { margin: 0; }
+                        .anidbStatusCheck .fieldDescription { margin: 0.4em 0 0 0; }
+                        /* Grows with what is typed into it, rather than scrolling a fixed four rows. */
+                        .anidbTextarea { width: 100%; box-sizing: border-box; font-size: 1rem; line-height: 1.4375em; field-sizing: content; min-height: 8em; }
+                    </style>
+
+                    <h1>AniDB</h1>
+
+                    <div class="anidbNotice">
+                        <h3>AniDB bans clients, addresses and VPNs that ask too often</h3>
+                        <p>AniDB allows one request every few seconds from an IP address and bans one that goes past that, for anything from 15 minutes to a day. The ban is on your address, not on this plugin, so it also stops anything else on the same connection from reaching AniDB.</p>
+                        <p>The first scan of a library is where this is most likely: it asks about every show at once. The plugin paces its requests, waits a ban out rather than retrying into it, and keeps using what it has already cached, so a ban costs you missing metadata for a while rather than anything permanent - refresh those items once it has lifted. It is worth scanning a handful of shows first and letting the rest follow.</p>
+                        <p>Do not lower <em>Maximum Cache Age</em> or <em>Request Interval</em> below their defaults, and raise the interval if anything else on this address talks to AniDB. If a scan seems to have stalled, check the status below before restarting anything: restarting does not clear a ban.</p>
+                    </div>
+
+                    <div class="anidbStatus">
+                        <h3>Status</h3>
+                        <dl id="anidbStatusBody">
+                            <div class="anidbStatusLine"><dt>AniDB</dt><dd id="anidbState">Loading...</dd></div>
+                            <div class="anidbStatusLine"><dt>Requests waiting</dt><dd id="anidbQueued">-</dd></div>
+                            <div class="anidbStatusLine"><dt>Requests sent since start</dt><dd id="anidbSent">-</dd></div>
+                            <div class="anidbStatusLine"><dt>Mapping overrides</dt><dd id="anidbOverrides">-</dd></div>
+                            <div class="anidbStatusLine"><dt>AniBridge mappings</dt><dd id="anidbAniBridge">-</dd></div>
+                            <div class="anidbStatusLine"><dt>Anime list</dt><dd id="anidbAnimeList">-</dd></div>
+                        </dl>
+                        <div class="anidbStatusCheck">
+                            <button id="btnCheckSources" is="emby-button" type="button" class="raised emby-button">
+                                <span>Check For Updates Now</span>
+                            </button>
+                            <div class="fieldDescription">Asks both downloaded sources what they hold now, whatever the age of the copies cached, and downloads whichever has changed. Neither comes from AniDB, so this cannot get your address banned. The overrides need no check: they are read from disk every few seconds while this page is open.</div>
+                            <div class="fieldDescription anidbStatusState" id="anidbCheckResult"></div>
+                        </div>
+                    </div>
+
                     <form id="animeConfigurationForm">
                         <div class="selectContainer">
                             <label class="selectLabel" for="titleLanguage">Title Language</label>
@@ -17,26 +65,50 @@
                                 <option id="optLanguageJapanese" value="Japanese">Japanese</option>
                                 <option id="optLanguageJapaneseRomaji" value="JapaneseRomaji">Romaji</option>
                             </select>
-                        </div>
-                        <div class="selectContainer">
-                            <label class="selectLabel" for="originalTitleLanguage">Original Title Language</label>
-                            <select is="emby-select" id="originalTitleLanguage" name="originalTitleLanguage" class="emby-select-withcolor emby-select">
-                                <option id="optLanguageLocalized" value="Localized">Localized</option>
-                                <option id="optLanguageJapanese" value="Japanese">Japanese</option>
-                                <option id="optLanguageJapaneseRomaji" value="JapaneseRomaji">Romaji</option>
-                            </select>
+                            <div class="fieldDescription">The language the displayed title is taken from, falling back to the official English title and only then to the romaji one, so that a displayed title is in the Latin alphabet wherever AniDB has one. The original title is always the romaji title.</div>
                         </div>
                         <div class="inputContainer">
                             <label class="inputeLabel inputLabelUnfocused" for="chkTitleSimilarityThreshold">Title Similarity Threshold</label>
                             <input id="chkTitleSimilarityThreshold" name="chkTitleSimilarityThreshold" type="number" is="emby-input" min="0" />
                             <div class="fieldDescription">Set this to zero to only automatically match if the title of the show is exactly the same. A value of one means that one character can be inserted or deleted.</div>
                         </div>
+                        <div class="anidbNotice anidbInfo">
+                            <div class="fieldDescription">AniDB has no seasons: each one is a separate anime entry, and how those divide up is not how the provider numbering your seasons divides them. One entry can be four seasons of a long-running show, a season can end part way into one entry and finish in the next, and a movie can sit among the specials. Which entry fills which season is therefore read from the community anime list, which is checked against GitHub once a week, downloaded again only where it has changed since, and kept in the plugin's cache. A show the list does not carry falls back to working the mapping out from AniDB's own relations and air dates.</div>
+                        </div>
                         <div class="checkboxContainer checkboxContainer-withDescription">
                             <label class="emby-checkbox-label">
                                 <input id="chkIgnoreSeason" name="chkIgnoreSeason" type="checkbox" is="emby-checkbox" />
                                 <span>Ignore Season</span>
                             </label>
-                            <div class="fieldDescription">AniDB doesn't support seasons. If checked, it will treat every season like season one, except for specials.</div>
+                            <div class="fieldDescription">Use the series' own AniDB entry for every season, numbering episodes straight through. This overrides the mapping described above, so it is only worth setting for a show the mapping sources place wrongly or do not carry at all - a long-running show kept as one AniDB entry, such as One Piece, no longer needs it. Leave unchecked to give each season the AniDB entry that belongs to it.</div>
+                        </div>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="chkUseAniBridgeMappings" name="chkUseAniBridgeMappings" type="checkbox" is="emby-checkbox" />
+                                <span>Use The AniBridge Mappings</span>
+                            </label>
+                            <div class="fieldDescription">Consult the AniBridge mappings before the anime list when working out which AniDB entry fills a season. They place half again as many entries, state each season's episode ranges outright rather than leaving them to be worked out from an offset, and are the only source here that can identify a show from its TMDB id, which matters because Jellyfin takes TMDB as the provider for shows by default. The anime list still answers for whatever they do not place. Uncheck to leave the anime list to place everything, which is worth doing only where the mappings place one of your shows wrongly.</div>
+                        </div>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="chkUseAniDbSeasonNames" name="chkUseAniDbSeasonNames" type="checkbox" is="emby-checkbox" />
+                                <span>Name Seasons After Their AniDB Entry</span>
+                            </label>
+                            <div class="fieldDescription">AniDB gives every season of a show its own entry, with its own title, which for an arc usually carries the show's title as well and is longer than a season list has room for. If checked, a season is named after the entry it was filled from. Uncheck to keep the plain "Season 2" naming that the other metadata providers leave behind.</div>
+                        </div>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="chkImportGenres" name="chkImportGenres" type="checkbox" is="emby-checkbox" />
+                                <span>Import Genres</span>
+                            </label>
+                            <div class="fieldDescription">Uncheck to take no genres from AniDB at all, leaving the genre list to whichever other provider fills it. AniDB derives genres from its tags, which are far more specific than a genre list usually is and do not line up with the genres the other providers give.</div>
+                        </div>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="chkImportTags" name="chkImportTags" type="checkbox" is="emby-checkbox" />
+                                <span>Import Tags</span>
+                            </label>
+                            <div class="fieldDescription">Uncheck to take no tags from AniDB. Independent of the genres above: a library can have AniDB's tags without its genres, or the other way round.</div>
                         </div>
                         <div class="inputContainer">
                             <label class="inputeLabel inputLabelUnfocused" for="chkMaxGenres">Max Genres</label>
@@ -48,12 +120,38 @@
                                 <input id="chkTitleCaseGenres" name="chkTitleCaseGenres" type="checkbox" is="emby-checkbox" />
                                 <span>Title Case Genres</span>
                             </label>
+                            <div class="fieldDescription">AniDB writes its tags in lower case. If checked, both genres and tags are capitalised for display.</div>
                         </div>
                         <div class="checkboxContainer checkboxContainer-withDescription">
                             <label class="emby-checkbox-label">
                                 <input id="chkTidyGenres" name="chkTidyGenres" type="checkbox" is="emby-checkbox" />
                                 <span>Tidy Genre List</span>
                             </label>
+                            <div class="fieldDescription">AniDB has thousands of tags, most of which name a plot element or a production detail rather than a genre. If checked, only the tags that name a genre are shown as genres, under common genre names. If unchecked, every tag AniDB rates highly enough becomes a genre. Either way the tags themselves are unaffected - use Import Tags above to turn those off.</div>
+                        </div>
+                        <div class="inputContainer">
+                            <label class="inputeLabel inputLabelUnfocused" for="chkMinimumTagWeight">Minimum Tag Weight</label>
+                            <input id="chkMinimumTagWeight" name="chkMinimumTagWeight" type="number" is="emby-input" min="0" />
+                            <div class="fieldDescription">AniDB weights every tag by how much of the show it describes. Tags below this weight are dropped, tags and genres alike. 400 is where AniDB itself stops treating a tag as descriptive; raise it to keep only what characterises the show. AniDB weights a tag from 0 to 600 in steps of 100 - see <a is="emby-linkbutton" class="button-link" target="_blank" rel="noopener noreferrer" href="https://wiki.anidb.net/Tags#Star-rating_-_the_Weight_system">the weight system</a> on the AniDB wiki.</div>
+                        </div>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="chkInfoboxTagsOnly" name="chkInfoboxTagsOnly" type="checkbox" is="emby-checkbox" />
+                                <span>Infobox Tags Only</span>
+                            </label>
+                            <div class="fieldDescription">AniDB marks the handful of tags it shows in the infobox on an anime's page. If checked, only those are imported, leaving out the tags that describe the setting, the cast or a production detail.</div>
+                        </div>
+                        <div class="inputContainer">
+                            <label class="inputeLabel inputLabelUnfocused" for="txtTagBlacklist">Tag Blacklist</label>
+                            <textarea id="txtTagBlacklist" name="txtTagBlacklist" is="emby-textarea" class="emby-textarea anidbTextarea" rows="4"></textarea>
+                            <div class="fieldDescription">Tag names never to import, one per line or separated by commas. Matched whole and without regard to case, against the name AniDB uses.</div>
+                        </div>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="chkIncludeAdultTags" name="chkIncludeAdultTags" type="checkbox" is="emby-checkbox" />
+                                <span>Include Adult Tags</span>
+                            </label>
+                            <div class="fieldDescription">AniDB flags 125 of its tags as 18+ content, naming sexual acts and body parts in detail. Those are dropped, along with anything filed under them, unless this is checked. Anime AniDB flags as adult are rated as such either way, so parental controls are unaffected by this setting.</div>
                         </div>
                         <div class="selectContainer">
                             <label class="selectLabel" for="animeDefaultGenre">Anime Default Genre Name</label>
@@ -67,6 +165,11 @@
                             <label class="inputeLabel inputLabelUnfocused" for="chkMaxCacheAge">Maximum Cache Age</label>
                             <input id="chkMaxCacheAge" name="chkMaxCacheAge" type="number" is="emby-input" min="7" />
                             <div class="fieldDescription">How many days cached series metadata will be reused before fetching new metatdata from AniDB. Minimum 7 days: AniDB allows only a low number of requests per IP per day, and shorter windows will get your server banned.</div>
+                        </div>
+                        <div class="inputContainer">
+                            <label class="inputeLabel inputLabelUnfocused" for="chkRequestIntervalMs">Request Interval (ms)</label>
+                            <input id="chkRequestIntervalMs" name="chkRequestIntervalMs" type="number" is="emby-input" min="2500" step="100" />
+                            <div class="fieldDescription">How long to wait between two AniDB requests. Minimum 2500 ms, which is what AniDB itself allows. AniDB counts requests per IP rather than per client, so raise this if anything else on the same address talks to AniDB as well. One request covers a whole entry, and probing the files of a season usually takes longer than the wait does, so a higher interval costs a scan less than it looks like it would.</div>
                         </div>
                         <div class="checkboxContainer checkboxContainer-withDescription">
                             <label class="emby-checkbox-label">
@@ -86,21 +189,156 @@
             <script type="text/javascript">
                 var AniDBConfigurationPage = {
                     pluginUniqueId: "a2b2a7ed-aa28-4521-a64a-63d86901f246",
+                    statusTimer: null,
+
+                    formatDuration: function (seconds) {
+                        var total = Math.max(0, Math.round(seconds));
+
+                        if (total < 60) {
+                            return total + ' seconds';
+                        }
+
+                        if (total < 3600) {
+                            return Math.round(total / 60) + ' minutes';
+                        }
+
+                        return (total / 3600).toFixed(1) + ' hours';
+                    },
+
+                    formatDate: function (value) {
+                        return value ? new Date(value).toLocaleString() : 'never';
+                    },
+
+                    /* Both dates, the check only where it is later than the download: a
+                       check that finds the cached copy current is what leaves the two apart. */
+                    formatSource: function (cachedAtUtc, checkedAtUtc, entryCount, maxAgeDays) {
+                        if (!cachedAtUtc) {
+                            return 'not downloaded yet';
+                        }
+
+                        var text = 'downloaded ' + AniDBConfigurationPage.formatDate(cachedAtUtc);
+
+                        if (checkedAtUtc && new Date(checkedAtUtc) > new Date(cachedAtUtc)) {
+                            text += ', unchanged when checked ' + AniDBConfigurationPage.formatDate(checkedAtUtc);
+                        }
+
+                        return text + ', ' + entryCount + ' entries read, checked again every '
+                            + maxAgeDays + ' days';
+                    },
+
+                    formatCount: function (count, singular, plural) {
+                        return count + ' ' + (count === 1 ? singular : plural);
+                    },
+
+                    formatOverrides: function (status) {
+                        if (!status.OverridesWrittenAtUtc) {
+                            return 'none - write ' + status.OverridesPath + ' to place what the sources below cannot';
+                        }
+
+                        var written = 'written ' + AniDBConfigurationPage.formatDate(status.OverridesWrittenAtUtc);
+
+                        if (status.OverridesError) {
+                            return written + ', but it is not valid JSON and nothing new is taken from it: '
+                                + status.OverridesError;
+                        }
+
+                        return written + ', ' + AniDBConfigurationPage.formatCount(status.OverridesEntryCount, 'entry', 'entries')
+                            + ' read from ' + status.OverridesPath + ', filling '
+                            + AniDBConfigurationPage.formatCount(status.OverridesShowCount, 'show', 'shows')
+                            + ' and identifying '
+                            + AniDBConfigurationPage.formatCount(status.OverridesMovieCount, 'movie', 'movies');
+                    },
+
+                    renderStatus: function (status) {
+                        var state = document.getElementById('anidbState');
+
+                        if (status.IsBanned) {
+                            state.className = 'anidbStatusState anidbStatusState-banned';
+                            state.textContent = 'Paused - AniDB is refusing requests. Waiting '
+                                + AniDBConfigurationPage.formatDuration(status.BanRemainingSeconds)
+                                + ' before trying again. Cached metadata is still used in the meantime.';
+                        } else {
+                            state.className = 'anidbStatusState anidbStatusState-ok';
+                            state.textContent = 'Answering requests, one every '
+                                + (status.RequestIntervalMs / 1000).toFixed(1) + ' seconds.';
+                        }
+
+                        document.getElementById('anidbQueued').textContent = status.QueuedRequests === 0
+                            ? 'none'
+                            : status.QueuedRequests + ' waiting, next in '
+                                + AniDBConfigurationPage.formatDuration(status.NextRequestInSeconds);
+
+                        document.getElementById('anidbSent').textContent = status.RequestsSent
+                            + ' (last ' + AniDBConfigurationPage.formatDate(status.LastRequestUtc) + ')';
+
+                        document.getElementById('anidbOverrides').textContent = AniDBConfigurationPage.formatOverrides(status);
+
+                        document.getElementById('anidbAniBridge').textContent = !status.AniBridgeEnabled
+                            ? 'not used'
+                            : AniDBConfigurationPage.formatSource(
+                                status.AniBridgeCachedAtUtc,
+                                status.AniBridgeCheckedAtUtc,
+                                status.AniBridgeEntryCount,
+                                status.AniBridgeMaxAgeDays);
+
+                        document.getElementById('anidbAnimeList').textContent = AniDBConfigurationPage.formatSource(
+                            status.AnimeListCachedAtUtc,
+                            status.AnimeListCheckedAtUtc,
+                            status.AnimeListEntryCount,
+                            status.AnimeListMaxAgeDays);
+                    },
+
+                    checkSources: function () {
+                        var button = document.getElementById('btnCheckSources');
+                        var result = document.getElementById('anidbCheckResult');
+
+                        button.disabled = true;
+                        result.textContent = 'Checking both sources...';
+
+                        ApiClient.ajax({
+                            type: 'POST',
+                            url: ApiClient.getUrl('AniDB/Sources/Check'),
+                            dataType: 'json'
+                        }).then(function (check) {
+                            button.disabled = false;
+                            result.textContent = 'AniBridge mappings: ' + check.AniBridge
+                                + '. Anime list: ' + check.AnimeList + '.';
+                            AniDBConfigurationPage.refreshStatus();
+                        }, function () {
+                            button.disabled = false;
+                            result.textContent = 'The check could not be run. Restart the server if the plugin was just installed or updated.';
+                        });
+                    },
+
+                    refreshStatus: function () {
+                        ApiClient.getJSON(ApiClient.getUrl('AniDB/Status'))
+                            .then(AniDBConfigurationPage.renderStatus, function () {
+                                document.getElementById('anidbState').textContent = 'Unavailable. Restart the server if the plugin was just installed or updated.';
+                            });
+                    },
 
                     loadConfiguration: function () {
                         Dashboard.showLoadingMsg();
 
                         ApiClient.getPluginConfiguration(AniDBConfigurationPage.pluginUniqueId).then(function (config) {
                             document.getElementById('titleLanguage').value = config.TitlePreference;
-                            document.getElementById('originalTitleLanguage').value = config.OriginalTitlePreference;
                             document.getElementById('chkIgnoreSeason').checked = config.IgnoreSeason;
+                            document.getElementById('chkUseAniBridgeMappings').checked = config.UseAniBridgeMappings;
+                            document.getElementById('chkUseAniDbSeasonNames').checked = config.UseAniDbSeasonNames;
+                            document.getElementById('chkImportGenres').checked = config.ImportGenres;
+                            document.getElementById('chkImportTags').checked = config.ImportTags;
                             document.getElementById('chkTitleSimilarityThreshold').value = config.TitleSimilarityThreshold;
                             document.getElementById('chkMaxGenres').value = config.MaxGenres;
                             document.getElementById('chkTitleCaseGenres').checked = config.TitleCaseGenres;
                             document.getElementById('chkTidyGenres').checked = config.TidyGenreList;
                             document.getElementById('animeDefaultGenre').value = config.AnimeDefaultGenre;
                             document.getElementById('chkMaxCacheAge').value = config.MaxCacheAge;
+                            document.getElementById('chkRequestIntervalMs').value = config.RequestIntervalMs;
                             document.getElementById('chkAniDbReplaceGraves').checked = config.AniDbReplaceGraves;
+                            document.getElementById('chkIncludeAdultTags').checked = config.IncludeAdultTags;
+                            document.getElementById('chkMinimumTagWeight').value = config.MinimumTagWeight;
+                            document.getElementById('chkInfoboxTagsOnly').checked = config.InfoboxTagsOnly;
+                            document.getElementById('txtTagBlacklist').value = config.TagBlacklist;
 
                             Dashboard.hideLoadingMsg();
                         });
@@ -111,15 +349,23 @@
 
                         ApiClient.getPluginConfiguration(AniDBConfigurationPage.pluginUniqueId).then(function (config) {
                             config.TitlePreference = document.getElementById('titleLanguage').value;
-                            config.OriginalTitlePreference = document.getElementById('originalTitleLanguage').value;
                             config.IgnoreSeason = document.getElementById('chkIgnoreSeason').checked;
+                            config.UseAniBridgeMappings = document.getElementById('chkUseAniBridgeMappings').checked;
+                            config.UseAniDbSeasonNames = document.getElementById('chkUseAniDbSeasonNames').checked;
+                            config.ImportGenres = document.getElementById('chkImportGenres').checked;
+                            config.ImportTags = document.getElementById('chkImportTags').checked;
                             config.TitleSimilarityThreshold = document.getElementById('chkTitleSimilarityThreshold').value;
                             config.MaxGenres = document.getElementById('chkMaxGenres').value;
                             config.TitleCaseGenres = document.getElementById('chkTitleCaseGenres').checked;
                             config.TidyGenreList = document.getElementById('chkTidyGenres').checked;
                             config.AnimeDefaultGenre = document.getElementById('animeDefaultGenre').value;
                             config.MaxCacheAge = document.getElementById('chkMaxCacheAge').value;
+                            config.RequestIntervalMs = document.getElementById('chkRequestIntervalMs').value;
                             config.AniDbReplaceGraves = document.getElementById('chkAniDbReplaceGraves').checked;
+                            config.IncludeAdultTags = document.getElementById('chkIncludeAdultTags').checked;
+                            config.MinimumTagWeight = document.getElementById('chkMinimumTagWeight').value;
+                            config.InfoboxTagsOnly = document.getElementById('chkInfoboxTagsOnly').checked;
+                            config.TagBlacklist = document.getElementById('txtTagBlacklist').value;
 
                             ApiClient.updatePluginConfiguration(AniDBConfigurationPage.pluginUniqueId, config).then(function (result) {
                                 Dashboard.processPluginConfigurationUpdateResult(result);
@@ -130,6 +376,17 @@
 
                 document.getElementById('animeConfigurationPage').addEventListener('pageshow', function () {
                     AniDBConfigurationPage.loadConfiguration();
+                    AniDBConfigurationPage.refreshStatus();
+                    AniDBConfigurationPage.statusTimer = setInterval(AniDBConfigurationPage.refreshStatus, 5000);
+                });
+
+                document.getElementById('animeConfigurationPage').addEventListener('pagehide', function () {
+                    clearInterval(AniDBConfigurationPage.statusTimer);
+                    AniDBConfigurationPage.statusTimer = null;
+                });
+
+                document.getElementById('btnCheckSources').addEventListener('click', function () {
+                    AniDBConfigurationPage.checkSources();
                 });
 
                 document.getElementById('animeConfigurationForm').addEventListener('submit', function (e) {

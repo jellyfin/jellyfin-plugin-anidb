@@ -9,208 +9,137 @@ namespace Jellyfin.Plugin.AniDB.Providers;
 
 public static class GenreHelper
 {
-    private static readonly Dictionary<string, string> GenreMappings = new()
+    /// <summary>
+    /// Maps the AniDB tags that describe what a show is onto the genre names to display, and
+    /// by doing so decides which tags are genres at all. Of AniDB's ~4700 tags, nearly all name
+    /// a plot element, a setting or a production detail; anything absent from this table is
+    /// left as a tag only.
+    /// </summary>
+    private static readonly Dictionary<string, string> GenreMappings = new(StringComparer.OrdinalIgnoreCase)
     {
-        { "Action", "Action" },
-        { "Advanture", "Adventure" },
-        { "Contemporary Fantasy", "Fantasy" },
-        { "Comedy", "Comedy" },
-        { "Dark Fantasy", "Fantasy" },
-        { "Dementia", "Psychological Thriller" },
-        { "Demons", "Fantasy" },
-        { "Drama", "Drama" },
-        { "Ecchi", "Ecchi" },
-        { "Fantasy", "Fantasy" },
-        { "Harem", "Harem" },
-        { "Hentai", "Adult" },
-        { "Historical", "Period & Historical" },
-        { "Horror", "Horror" },
-        { "Josei", "Josei" },
-        { "Kids", "Kids" },
-        { "Magic", "Fantasy" },
-        { "Martial Arts", "Martial Arts" },
-        { "Mahou Shoujo", "Mahou Shoujo" },
-        { "Mecha", "Mecha" },
-        { "Music", "Music" },
-        { "Mystery", "Mystery" },
-        { "Parody", "Comedy" },
-        { "Psychological", "Psychological Thriller" },
-        { "Romance", "Romance" },
-        { "Sci-Fi", "Sci-Fi" },
-        { "Seinen", "Seinen" },
-        { "Shoujo", "Shoujo" },
-        { "Shounen", "Shounen" },
-        { "Slice of Life", "Slice of Life" },
-        { "Space", "Sci-Fi" },
-        { "Sports", "Sport" },
-        { "Supernatural", "Supernatural" },
-        { "Thriller", "Thriller" },
-        { "Tragedy", "Tragedy" },
-        { "Witch", "Supernatural" },
-        { "Vampire", "Supernatural" },
-        { "Yaoi", "Adult" },
-        { "Yuri", "Adult" },
-        { "Zombie", "Supernatural" },
+        // Core genres.
+        { "action", "Action" },
+        { "adventure", "Adventure" },
+        { "comedy", "Comedy" },
+        { "parody", "Comedy" },
+        { "horror", "Horror" },
+        { "mystery", "Mystery" },
+        { "detective", "Mystery" },
+        { "romance", "Romance" },
+        { "thriller", "Thriller" },
+        { "psychological", "Psychological Thriller" },
+        { "tragedy", "Tragedy" },
+        { "crime", "Crime" },
+        { "police", "Crime" },
+        { "historical", "Historical" },
+        { "samurai", "Historical" },
+        { "military", "Military" },
+        { "war", "Military" },
+        { "music", "Music" },
+        { "idol", "Music" },
+        { "sports", "Sports" },
+        { "cooking", "Cooking" },
+
+        // Fantasy and the creature tags that stand in for it.
+        { "fantasy", "Fantasy" },
+        { "contemporary fantasy", "Fantasy" },
+        { "dark fantasy", "Fantasy" },
+        { "high fantasy", "Fantasy" },
+        { "magic", "Fantasy" },
+        { "dragon", "Fantasy" },
+        { "demon", "Supernatural" },
+        { "angel", "Supernatural" },
+        { "ghost", "Supernatural" },
+        { "vampire", "Supernatural" },
+        { "zombie", "Supernatural" },
+        { "magical girl", "Mahou Shoujo" },
+        { "isekai", "Isekai" },
+
+        // Science fiction and its sub-genres.
+        { "science fiction", "Sci-Fi" },
+        { "space opera", "Sci-Fi" },
+        { "cyberpunk", "Sci-Fi" },
+        { "post-apocalyptic", "Sci-Fi" },
+        { "space", "Sci-Fi" },
+        { "time travel", "Sci-Fi" },
+        { "android", "Sci-Fi" },
+        { "mecha", "Mecha" },
+        { "robot", "Mecha" },
+
+        // Setting and combat tags that read as genres.
+        { "daily life", "Slice of Life" },
+        { "school life", "School Life" },
+        { "high school", "School Life" },
+        { "martial arts", "Martial Arts" },
+        { "super power", "Super Power" },
+        { "swordplay", "Action" },
+        { "gunfights", "Action" },
+
+        // Target audience.
+        { "shounen", "Shounen" },
+        { "shoujo", "Shoujo" },
+        { "seinen", "Seinen" },
+        { "josei", "Josei" },
+        { "kodomo", "Kodomo" },
+
+        // Romance sub-genres and content rating.
+        { "harem", "Harem" },
+        { "reverse harem", "Harem" },
+        { "ecchi", "Ecchi" },
+        { "yuri", "Yuri" },
+        { "shoujo ai", "Yuri" },
+        { "yaoi", "Yaoi" },
+        { "shounen ai", "Yaoi" },
+        { "18 restricted", "Adult" },
+        { "pornography", "Adult" },
     };
 
-    private static readonly string[] GenresAsTags =
-    [
-        "Hentai",
-        "Space",
-        "Weltraum",
-        "Yaoi",
-        "Yuri",
-        "Demons",
-        "Witch",
-        // AniSearchTags
-        "Krieg",
-        "Militär",
-        "Satire",
-        "Übermäßige Gewaltdarstellung",
-        "Monster",
-        "Zeitgenössische Fantasy",
-        "Dialogwitz",
-        "Romantische Komödie",
-        "Slapstick",
-        "Alternative Welt",
-        "4-panel",
-        "CG-Anime",
-        "Episodisch",
-        "Moe",
-        "Parodie",
-        "Splatter",
-        "Tragödie",
-        "Verworrene Handlung",
-        // Themen
-        "Erwachsenwerden",
-        "Gender Bender",
-        "Ältere Frau, jüngerer Mann",
-        "Älterer Mann, jüngere Frau",
-        // Schule (School)
-        "Grundschule",
-        "Kindergarten",
-        "Klubs",
-        "Mittelschule",
-        "Oberschule",
-        "Schule",
-        "Universität",
-        // Zeit (Time)
-        "Altes Asien",
-        "Frühe Neuzeit",
-        "Gegenwart",
-        "industrialisierung",
-        "Meiji-Ära",
-        "Mittelalter",
-        "Weltkriege",
-        // Fantasy
-        "Dunkle Fantasy",
-        "Epische Fantasy",
-        "Zeitgenössische Fantasy",
-        // Ort
-        "Alternative Welt",
-        "In einem Raumschiff",
-        "Weltraum",
-        // Setting
-        "Cyberpunk",
-        "Endzeit",
-        "Space Opera",
-        // Hauptfigur
-        "Charakterschache Heldin",
-        "Charakterschacher Held",
-        "Charakterstarke Heldin",
-        "Charakterstarker Held",
-        "Gedächtnisverlust",
-        "Stoische Heldin",
-        "Stoischer Held",
-        "Widerwillige Heldin",
-        "Widerwilliger Held",
-        // Figuren
-        "Diva",
-        "Genie",
-        "Schul-Delinquent",
-        "Tomboy",
-        "Tsundere",
-        "Yandere",
-        // Kampf (fight)
-        "Bionische Kräfte",
-        "Martial Arts",
-        "PSI-Kräfte",
-        "Real Robots",
-        "Super Robots",
-        "Schusswaffen",
-        "Schwerter & co",
-        // Sports (Sport)
-        "Baseball",
-        "Boxen",
-        "Denk- und Glücksspiele",
-        "Football",
-        "Fußball",
-        "Kampfsport",
-        "Rennsport",
-        "Tennis",
-        // Kunst (Art)
-        "Anime & Film",
-        "Malerei",
-        "Manga & Doujinshi",
-        "Musik",
-        "Theater",
-        // Tätigkeit
-        "Band",
-        "Detektiv",
-        "Dieb",
-        "Essenszubereitung",
-        "Idol",
-        "Kopfgeldjäger",
-        "Ninja",
-        "Polizist",
-        "Ritter",
-        "Samurai",
-        "Solosänger",
-        // Wesen
-        "Außerirdische",
-        "Cyborgs",
-        "Dämonen",
-        "Elfen",
-        "Geister",
-        "Hexen",
-        "Himmlische Wesen",
-        "Kamis",
-        "Kemonomimi",
-        "Monster",
-        "Roboter & Androiden",
-        "Tiermenschen",
-        "Vampire",
-        "Youkai",
-        "Zombie",
-    ];
-
-    private static readonly Dictionary<string, string> IgnoreIfPresent = new()
+    /// <summary>
+    /// Genres that are implied by a more specific one, and so are dropped when it is present.
+    /// Keyed by the specific genre, valued by the one it makes redundant.
+    /// </summary>
+    private static readonly Dictionary<string, string> IgnoreIfPresent = new(StringComparer.OrdinalIgnoreCase)
     {
         { "Psychological Thriller", "Thriller" }
     };
 
-    private static readonly string[] second = new[] { "Animation", "Anime" };
+    private static readonly string[] second = ["Animation", "Anime"];
 
     public static void CleanupGenres(Series series)
     {
         PluginConfiguration config = Plugin.Instance.Configuration;
 
+        // Before mapping, so the names the table produces keep the casing it spells them
+        // with: title casing "Slice of Life" would give "Slice Of Life".
         if (config.TitleCaseGenres)
         {
-            series.Genres = [.. series.Genres.Select(g => CultureInfo.InvariantCulture.TextInfo.ToTitleCase(g))];
+            series.Genres = [.. series.Genres.Select(TitleCase)];
+            series.Tags = [.. series.Tags.Select(TitleCase)];
+        }
+
+        if (!config.ImportTags)
+        {
+            series.Tags = [];
+        }
+
+        if (!config.ImportGenres)
+        {
+            series.Genres = [];
+
+            return;
         }
 
         if (config.TidyGenreList)
         {
-            series.Genres = [.. RemoveRedundantGenres(series.Genres).Distinct()];
-
             TidyGenres(series);
+
+            series.Genres = [.. RemoveRedundantGenres(series.Genres).Distinct(StringComparer.OrdinalIgnoreCase)];
         }
 
         if (config.AnimeDefaultGenre != AnimeDefaultGenreType.None)
         {
             series.Genres = [.. series.Genres
-                .Except(second)
+                .Except(second, StringComparer.OrdinalIgnoreCase)
                 .Prepend(config.AnimeDefaultGenre.ToString())];
         }
 
@@ -222,10 +151,16 @@ public static class GenreHelper
         series.Genres = [.. series.Genres.OrderBy(i => i)];
     }
 
+    /// <summary>
+    /// Keeps only the AniDB tags that name a genre, under the genre name to display them by.
+    /// The rest are already held as tags.
+    /// </summary>
+    /// <param name="series">The series whose genres to sort out.</param>
     public static void TidyGenres(Series series)
     {
-        var genres = new HashSet<string>();
-        var tags = new HashSet<string>(series.Tags);
+        // Insertion order is kept so the genres AniDB weighted highest survive the MaxGenres
+        // trim, which happens before the list is sorted for display.
+        var genres = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (string genre in series.Genres)
         {
@@ -233,26 +168,19 @@ public static class GenreHelper
             {
                 genres.Add(mapped);
             }
-            else
-            {
-                genres.Add(genre);
-            }
-
-            if (GenresAsTags.Contains(genre))
-            {
-                genres.Add(genre);
-            }
         }
 
         series.Genres = [.. genres];
-        series.Tags = [.. tags];
     }
+
+    private static string TitleCase(string value)
+        => CultureInfo.InvariantCulture.TextInfo.ToTitleCase(value);
 
     public static IEnumerable<string> RemoveRedundantGenres(IEnumerable<string> genres)
     {
         var list = genres as IList<string> ?? [.. genres];
 
         var toRemove = list.Where(IgnoreIfPresent.ContainsKey).Select(genre => IgnoreIfPresent[genre]).ToList();
-        return list.Where(genre => !toRemove.Contains(genre));
+        return list.Where(genre => !toRemove.Contains(genre, StringComparer.OrdinalIgnoreCase));
     }
 }
