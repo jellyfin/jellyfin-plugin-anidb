@@ -6,9 +6,9 @@ using MediaBrowser.Model.Providers;
 namespace Jellyfin.Plugin.AniDB.Providers.AniDB;
 
 /// <summary>
-/// The AniDB external id for episodes.
+/// The AniDB external id for seasons.
 /// </summary>
-public class AniDbExternalEpisodeId : IExternalId
+public class AniDbExternalSeasonId : IExternalId
 {
     /// <inheritdoc />
     public string ProviderName
@@ -20,9 +20,9 @@ public class AniDbExternalEpisodeId : IExternalId
 
     /// <inheritdoc />
     public ExternalIdMediaType? Type
-        => ExternalIdMediaType.Episode;
+        => ExternalIdMediaType.Season;
 
     /// <inheritdoc />
     public bool Supports(IHasProviderIds item)
-        => item is Episode;
+        => item is Season;
 }
