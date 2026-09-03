@@ -9,6 +9,10 @@
         <div id="animeConfigurationPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox">
             <div data-role="content">
                 <div class="content-primary">
+                        .anidbInfo { border-left-color: #2256f2; background: rgba(34, 86, 242, 0.08); }
+                    <h1>AniDB</h1>
+
+                        <h3>AniDB bans clients, addresses and VPNs that ask too often</h3>
                     <form id="animeConfigurationForm">
                         <div class="selectContainer">
                             <label class="selectLabel" for="titleLanguage">Title Language</label>
@@ -17,21 +21,14 @@
                                 <option id="optLanguageJapanese" value="Japanese">Japanese</option>
                                 <option id="optLanguageJapaneseRomaji" value="JapaneseRomaji">Romaji</option>
                             </select>
-                        </div>
-                        <div class="selectContainer">
-                            <label class="selectLabel" for="originalTitleLanguage">Original Title Language</label>
-                            <select is="emby-select" id="originalTitleLanguage" name="originalTitleLanguage" class="emby-select-withcolor emby-select">
-                                <option id="optLanguageLocalized" value="Localized">Localized</option>
-                                <option id="optLanguageJapanese" value="Japanese">Japanese</option>
-                                <option id="optLanguageJapaneseRomaji" value="JapaneseRomaji">Romaji</option>
-                            </select>
+                            <div class="fieldDescription">The language the displayed title is taken from, falling back to the official English title and only then to the romaji one, so that a displayed title is in the Latin alphabet wherever AniDB has one. The original title is always the romaji title.</div>
                         </div>
                         <div class="inputContainer">
                             <label class="inputeLabel inputLabelUnfocused" for="chkTitleSimilarityThreshold">Title Similarity Threshold</label>
                             <input id="chkTitleSimilarityThreshold" name="chkTitleSimilarityThreshold" type="number" is="emby-input" min="0" />
                             <div class="fieldDescription">Set this to zero to only automatically match if the title of the show is exactly the same. A value of one means that one character can be inserted or deleted.</div>
                         </div>
-                        <div class="inputContainer">
+                        <div class="anidbNotice anidbInfo">
                             <div class="fieldDescription">AniDB has no seasons: each one is a separate anime entry, and how those divide up is not how the provider numbering your seasons divides them. One entry can be four seasons of a long-running show, a season can end part way into one entry and finish in the next, and a film can sit among the specials. Which entry fills which season is therefore read from the community anime list, downloaded from GitHub once a week and kept in the plugin's cache. A show the list does not carry falls back to working the mapping out from AniDB's own relations and air dates.</div>
                         </div>
                         <div class="checkboxContainer checkboxContainer-withDescription">
@@ -46,14 +43,14 @@
                                 <input id="chkUseAniDbSeasonNames" name="chkUseAniDbSeasonNames" type="checkbox" is="emby-checkbox" />
                                 <span>Name Seasons After Their AniDB Entry</span>
                             </label>
-                            <div class="fieldDescription">AniDB gives every season of a show its own entry, with its own title. If checked, a season is named after the entry it was filled from. Uncheck to keep the plain "Season 2" naming that the other metadata providers leave behind.</div>
+                            <div class="fieldDescription">AniDB gives every season of a show its own entry, with its own title, which for an arc usually carries the show's title as well and is longer than a season list has room for. If checked, a season is named after the entry it was filled from. Uncheck to keep the plain "Season 2" naming that the other metadata providers leave behind.</div>
                         </div>
                         <div class="checkboxContainer checkboxContainer-withDescription">
                             <label class="emby-checkbox-label">
                                 <input id="chkImportGenres" name="chkImportGenres" type="checkbox" is="emby-checkbox" />
                                 <span>Import Genres</span>
                             </label>
-                            <div class="fieldDescription">Uncheck to take no genres from AniDB at all, leaving the genre list to whichever other provider fills it. AniDB derives genres from its tags, which are far more specific than a genre list usually is.</div>
+                            <div class="fieldDescription">Uncheck to take no genres from AniDB at all, leaving the genre list to whichever other provider fills it. AniDB derives genres from its tags, which are far more specific than a genre list usually is and do not line up with the genres the other providers give.</div>
                         </div>
                         <div class="checkboxContainer checkboxContainer-withDescription">
                             <label class="emby-checkbox-label">
@@ -84,7 +81,7 @@
                         <div class="inputContainer">
                             <label class="inputeLabel inputLabelUnfocused" for="chkMinimumTagWeight">Minimum Tag Weight</label>
                             <input id="chkMinimumTagWeight" name="chkMinimumTagWeight" type="number" is="emby-input" min="0" />
-                            <div class="fieldDescription">AniDB weights every tag by how much of the show it describes. Tags below this weight are dropped, tags and genres alike. 400 is where AniDB itself stops treating a tag as descriptive; raise it to keep only what characterises the show.</div>
+                            <div class="fieldDescription">AniDB weights every tag by how much of the show it describes. Tags below this weight are dropped, tags and genres alike. 400 is where AniDB itself stops treating a tag as descriptive; raise it to keep only what characterises the show. AniDB weights a tag from 0 to 600 in steps of 100 - see <a is="emby-linkbutton" class="button-link" target="_blank" rel="noopener noreferrer" href="https://wiki.anidb.net/Tags#Star-rating_-_the_Weight_system">the weight system</a> on the AniDB wiki.</div>
                         </div>
                         <div class="checkboxContainer checkboxContainer-withDescription">
                             <label class="emby-checkbox-label">
@@ -121,7 +118,7 @@
                         <div class="inputContainer">
                             <label class="inputeLabel inputLabelUnfocused" for="chkRequestIntervalMs">Request Interval (ms)</label>
                             <input id="chkRequestIntervalMs" name="chkRequestIntervalMs" type="number" is="emby-input" min="2500" step="100" />
-                            <div class="fieldDescription">How long to wait between two AniDB requests. Minimum 2500 ms, which is what AniDB itself allows. AniDB counts requests per IP rather than per client, so raise this if anything else on the same address talks to AniDB as well.</div>
+                            <div class="fieldDescription">How long to wait between two AniDB requests. Minimum 2500 ms, which is what AniDB itself allows. AniDB counts requests per IP rather than per client, so raise this if anything else on the same address talks to AniDB as well. One request covers a whole entry, and probing the files of a season usually takes longer than the wait does, so a higher interval costs a scan less than it looks like it would.</div>
                         </div>
                         <div class="checkboxContainer checkboxContainer-withDescription">
                             <label class="emby-checkbox-label">
@@ -147,7 +144,6 @@
 
                         ApiClient.getPluginConfiguration(AniDBConfigurationPage.pluginUniqueId).then(function (config) {
                             document.getElementById('titleLanguage').value = config.TitlePreference;
-                            document.getElementById('originalTitleLanguage').value = config.OriginalTitlePreference;
                             document.getElementById('chkIgnoreSeason').checked = config.IgnoreSeason;
                             document.getElementById('chkUseAniDbSeasonNames').checked = config.UseAniDbSeasonNames;
                             document.getElementById('chkImportGenres').checked = config.ImportGenres;
@@ -174,7 +170,6 @@
 
                         ApiClient.getPluginConfiguration(AniDBConfigurationPage.pluginUniqueId).then(function (config) {
                             config.TitlePreference = document.getElementById('titleLanguage').value;
-                            config.OriginalTitlePreference = document.getElementById('originalTitleLanguage').value;
                             config.IgnoreSeason = document.getElementById('chkIgnoreSeason').checked;
                             config.UseAniDbSeasonNames = document.getElementById('chkUseAniDbSeasonNames').checked;
                             config.ImportGenres = document.getElementById('chkImportGenres').checked;

@@ -1153,7 +1153,12 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
         }
 
         string? title = titles.Localize(Plugin.Instance.Configuration.TitlePreference, preferredMetadataLangauge)?.Name;
-        string? originalTitle = titles.Localize(Plugin.Instance.Configuration.OriginalTitlePreference, preferredMetadataLangauge)?.Name;
+
+        // The original title is the Japanese one, that being the language the anime was made
+        // in, written in romaji rather than in kanji: it is the name the show is catalogued
+        // under outside Japan, and it reads to anyone, which the kanji does not. It does not
+        // follow the displayed title's language.
+        string? originalTitle = titles.Localize(TitlePreferenceType.JapaneseRomaji, preferredMetadataLangauge)?.Name;
 
         return (title, originalTitle);
     }
