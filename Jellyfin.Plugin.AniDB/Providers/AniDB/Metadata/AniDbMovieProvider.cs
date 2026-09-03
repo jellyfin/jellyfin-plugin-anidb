@@ -30,7 +30,7 @@ public class AniDbMovieProvider(IApplicationPaths appPaths) : IRemoteMetadataPro
 
         if (string.IsNullOrEmpty(animeId) && !string.IsNullOrEmpty(info.Name))
         {
-            animeId = await Equals_check.XmlFindId(info.Name, cancellationToken).ConfigureAwait(false);
+            animeId = await Equals_check.XmlFindId(info.Name, info.Year ?? info.PremiereDate?.Year, cancellationToken).ConfigureAwait(false);
         }
 
         if (!string.IsNullOrEmpty(animeId))

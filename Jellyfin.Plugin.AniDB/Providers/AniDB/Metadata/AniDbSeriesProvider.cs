@@ -16,6 +16,7 @@ using System.Xml.Serialization;
 using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.AniDB.Configuration;
 using Jellyfin.Plugin.AniDB.Providers.AniDB.Identity;
+using Jellyfin.Plugin.AniDB.Providers.AniDB.Mapping;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.TV;
@@ -23,6 +24,7 @@ using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Providers;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata;
 
@@ -41,6 +43,14 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     /// Where AniDB serves the pictures it names in a picture attribute.
     /// </summary>
     private const string PersonImageBaseUrl = "https://cdn.anidb.net/images/main/";
+
+    /// <summary>
+    /// How many name matches an identify offers. Each one costs an AniDB request, paced
+    /// seconds apart, and the fuzzy search behind them returns every show whose name merely
+    /// begins alike - 78 of them for "Oshi no Ko". Without a cap one identify of a commonly
+    /// named show spends dozens of requests and is enough on its own to earn a ban.
+    /// </summary>
+    private const int MaxSearchResults = 10;
 
     // AniDB bans a client that sends requests closer together than 2500ms, which is the
     // floor the configured interval is clamped to. A bucket limiter cannot express this: it
@@ -327,9 +337,9 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     {
         var animeId = info.ProviderIds.GetValueOrDefault(ProviderNames.AniDb);
 
-        if (string.IsNullOrEmpty(animeId) && !string.IsNullOrEmpty(info.Name))
+        if (string.IsNullOrEmpty(animeId))
         {
-            animeId = await Equals_check.XmlFindId(info.Name, cancellationToken).ConfigureAwait(false);
+            animeId = await Identify(info, cancellationToken).ConfigureAwait(false);
         }
 
         if (!string.IsNullOrEmpty(animeId))
@@ -338,6 +348,123 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
         }
 
         return new MetadataResult<Series>();
+    }
+
+    /// <summary>
+    /// Works out which AniDB entry a show is, from whatever the library already knows of it.
+    /// </summary>
+    /// <param name="info">The series lookup info.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The AniDB id, or <c>null</c> when the show cannot be identified.</returns>
+    private async Task<string?> Identify(SeriesInfo info, CancellationToken cancellationToken)
+    {
+        // A TVDB or TMDB id a provider ahead of this one has already settled on names the show
+        // outright, and the mapping sources record which AniDB entry that id is. It is tried
+        // first because a name is the weaker evidence of the two: AniDB spells a great many
+        // names differently from TVDB, and where two shows do share a name the id is the only
+        // thing that tells them apart. A folder naming a season is left to the name match
+        // below, because the id names the whole show and would answer with its first season.
+        if (!AniDbSeasonResolver.NamesASeason(info.Name))
+        {
+            var mapped = await AniDbMappings.ResolveSeriesId(
+                _appPaths,
+                info.ProviderIds.GetValueOrDefault(nameof(MetadataProvider.Tvdb)),
+                info.ProviderIds.GetValueOrDefault(nameof(MetadataProvider.Tmdb)),
+                Logger ?? (ILogger)NullLogger.Instance,
+                cancellationToken).ConfigureAwait(false);
+
+            if (mapped != null)
+            {
+                Logger?.LogInformation(
+                    "{SeriesName} is AniDB anime {AnimeId}, which {Source} files under {Provider} series {ProviderId}",
+                    info.Name,
+                    mapped.AnimeId,
+                    mapped.Source,
+                    mapped.Provider,
+                    mapped.ProviderId);
+
+                return mapped.AnimeId;
+            }
+        }
+
+        // The folder is what the user named, and it still says which show this is where the name
+        // on the item no longer does.
+        var folderName = Path.GetFileName(info.Path?.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        var truncated = IsTruncation(info.Name, folderName);
+
+        if (truncated)
+        {
+            Logger?.LogInformation(
+                "{SeriesName} is what is left of the folder name {FolderName} once it was cut short, so the folder is searched instead. A name with no letters in it matches almost any anime, this search being a fuzzy one, and matching the wrong one would settle the show for good",
+                info.Name,
+                folderName);
+        }
+
+        var matched = string.IsNullOrEmpty(info.Name) || truncated
+            ? string.Empty
+            : await Equals_check.XmlFindId(info.Name, GetLookupYear(info), cancellationToken).ConfigureAwait(false);
+
+        // The name searched above is the item's, which is whatever provider reached it first,
+        // and a provider that matched the wrong show has already renamed it to that show. The
+        // folder gets an attempt of its own, under the year written into it rather than the
+        // wrong show's.
+        if (string.IsNullOrEmpty(matched)
+            && !string.IsNullOrEmpty(folderName)
+            && !string.Equals(folderName, info.Name, StringComparison.OrdinalIgnoreCase))
+        {
+            matched = await Equals_check.XmlFindId(folderName, YearInName(folderName) ?? GetLookupYear(info), cancellationToken).ConfigureAwait(false);
+
+            if (!string.IsNullOrEmpty(matched))
+            {
+                Logger?.LogInformation(
+                    "{SeriesName} could not be matched under that name, but its folder {FolderName} is AniDB anime {AnimeId}. The name on the item is another provider's, and that provider matched a different show",
+                    info.Name,
+                    folderName,
+                    matched);
+            }
+        }
+
+        if (string.IsNullOrEmpty(matched))
+        {
+            Logger?.LogInformation(
+                "No AniDB entry could be identified for {SeriesName} (folder {FolderName}). Where two shows share a name, the year in the folder name is what tells them apart, and a TVDB id on the show lets the anime list answer instead",
+                info.Name,
+                folderName);
+
+            return null;
+        }
+
+        // Only a name match is walked back. An id set by hand names the entry to use, the
+        // TVDB route already answers with the show's first entry, and the season provider asks
+        // for a season's own entry by id.
+        var searchedName = info.Name ?? folderName;
+
+        // The list is asked before AniDB's own relations are walked. A name match lands on a
+        // later season more often than it looks: AniDB disambiguates a second season by
+        // appending its year, exactly as it does a remake, so a show whose seasons all aired in
+        // one year matches its own sequel. The list records which season every entry fills, so
+        // it settles this for nothing, where each hop of the relation walk costs a request.
+        if (!AniDbSeasonResolver.NamesASeason(searchedName))
+        {
+            var listedFirst = await AniDbMappings.ResolveFirstSeason(
+                _appPaths,
+                matched,
+                Logger ?? (ILogger)NullLogger.Instance,
+                cancellationToken).ConfigureAwait(false);
+
+            if (!string.IsNullOrEmpty(listedFirst))
+            {
+                Logger?.LogInformation(
+                    "{SeriesName} matched AniDB anime {MatchedId}, which the mapping sources file as a later season. The show begins at anime {AnimeId}, which is used instead",
+                    searchedName,
+                    matched,
+                    listedFirst);
+
+                return listedFirst;
+            }
+        }
+
+        return await AniDbSeasonResolver.ResolveFirstSeasonId(_appPaths, matched, searchedName, Logger, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -367,55 +494,49 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     public async Task<IEnumerable<RemoteSearchResult>> GetSearchResults(SeriesInfo searchInfo, CancellationToken cancellationToken)
     {
         var results = new List<RemoteSearchResult>();
-        var animeId = searchInfo.ProviderIds.GetValueOrDefault(ProviderNames.AniDb);
+        var offered = new HashSet<string>(StringComparer.Ordinal);
+        var imageProvider = new AniDbImageProvider(_appPaths);
 
-        if (!string.IsNullOrEmpty(animeId))
+        async Task Offer(string? id)
         {
-            var resultMetadata = await GetMetadataForId(animeId, searchInfo, cancellationToken).ConfigureAwait(false);
-
-            if (resultMetadata.HasMetadata)
+            if (string.IsNullOrEmpty(id) || !offered.Add(id))
             {
-                var imageProvider = new AniDbImageProvider(_appPaths);
-                var images = await imageProvider.GetImages(animeId, cancellationToken).ConfigureAwait(false);
-                results.Add(MetadataToRemoteSearchResult(resultMetadata, images));
+                return;
+            }
+
+            var metadata = await GetMetadataForId(id, searchInfo, cancellationToken).ConfigureAwait(false);
+
+            if (metadata.HasMetadata)
+            {
+                // Read from the document the line above has just cached, so this costs no
+                // request of its own.
+                var images = await imageProvider.GetImages(id, cancellationToken).ConfigureAwait(false);
+
+                results.Add(MetadataToRemoteSearchResult(metadata, images));
             }
         }
+
+        await Offer(searchInfo.ProviderIds.GetValueOrDefault(ProviderNames.AniDb)).ConfigureAwait(false);
+
+        // The mapping sources are the ones here that answer with a certainty rather than a
+        // guess, so their answer goes first. They also settle the question the name cannot: they
+        // hold anime only, so an id they do not carry belongs to something that is not an
+        // anime - a live action adaptation sharing the show's name, most often - and an id they
+        // do carry names the AniDB entry outright.
+        var mapped = await AniDbMappings.ResolveSeriesId(
+            _appPaths,
+            searchInfo.ProviderIds.GetValueOrDefault(nameof(MetadataProvider.Tvdb)),
+            searchInfo.ProviderIds.GetValueOrDefault(nameof(MetadataProvider.Tmdb)),
+            Logger ?? (ILogger)NullLogger.Instance,
+            cancellationToken).ConfigureAwait(false);
+
+        await Offer(mapped?.AnimeId).ConfigureAwait(false);
 
         if (!string.IsNullOrEmpty(searchInfo.Name))
         {
-            List<RemoteSearchResult> name_results = await GetSearchResultsByName(searchInfo.Name, searchInfo, cancellationToken).ConfigureAwait(false);
-
-            foreach (var media in name_results)
+            foreach (var id in await Equals_check.XmlSearch(searchInfo.Name, MaxSearchResults, cancellationToken).ConfigureAwait(false))
             {
-                results.Add(media);
-            }
-        }
-
-        return results;
-    }
-
-    /// <summary>
-    /// Searches AniDB for series matching the given name.
-    /// </summary>
-    /// <param name="name">The name to search for.</param>
-    /// <param name="searchInfo">The series lookup info.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The search results.</returns>
-    public async Task<List<RemoteSearchResult>> GetSearchResultsByName(string name, SeriesInfo searchInfo, CancellationToken cancellationToken)
-    {
-        var imageProvider = new AniDbImageProvider(_appPaths);
-        var results = new List<RemoteSearchResult>();
-
-        List<string> ids = await Equals_check.XmlSearch(name, cancellationToken).ConfigureAwait(false);
-
-        foreach (string id in ids)
-        {
-            var resultMetadata = await GetMetadataForId(id, searchInfo, cancellationToken).ConfigureAwait(false);
-
-            if (resultMetadata.HasMetadata)
-            {
-                var images = await imageProvider.GetImages(id, cancellationToken).ConfigureAwait(false);
-                results.Add(MetadataToRemoteSearchResult(resultMetadata, images));
+                await Offer(id).ConfigureAwait(false);
             }
         }
 
@@ -1233,6 +1354,58 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     }
 
     /// <summary>
+    /// The year a lookup should be pinned to, taken from whichever of the item's own year and
+    /// its air date is set.
+    /// </summary>
+    /// <param name="info">The lookup info.</param>
+    /// <returns>The year, or <c>null</c> when nothing gives one.</returns>
+    private static int? GetLookupYear(ItemLookupInfo info)
+        => info.Year ?? info.PremiereDate?.Year;
+
+    /// <summary>
+    /// Whether the name on the item is the folder name cut short rather than a name of its own.
+    /// </summary>
+    /// <remarks>
+    /// A show whose name begins with a number and a dot arrives here named with just that
+    /// number: "2.43: Seiin High School Boys Volleyball Team" in a folder of that name reaches
+    /// this as "2". Whatever cut it is not this plugin - nothing here reads a name apart at a
+    /// dot - but searching what is left would match almost any anime, the search being fuzzy and
+    /// a single digit appearing in thousands of titles, and a match however wrong would keep the
+    /// folder from being tried at all. A name with no letter anywhere in it is the mark of such
+    /// a cut: a real title of that shape - "009-1", "001", "663114" - is its folder's name
+    /// whole rather than the start of it.
+    /// </remarks>
+    /// <param name="name">The name on the item.</param>
+    /// <param name="folderName">The name of the folder holding it.</param>
+    /// <returns><c>true</c> where the name is the folder name cut short.</returns>
+    private static bool IsTruncation(string? name, string? folderName)
+    {
+        if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(folderName) || name.Any(char.IsLetter))
+        {
+            return false;
+        }
+
+        return folderName.Length > name.Length
+            && folderName.StartsWith(name, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// The year a folder name carries, as "Ranma &#189; (1989)" does. It is what tells two
+    /// shows of one name apart, and it belongs to the folder rather than to whatever the item
+    /// has since been named.
+    /// </summary>
+    /// <param name="name">The folder name.</param>
+    /// <returns>The year, or <c>null</c> when the name carries none.</returns>
+    private static int? YearInName(string name)
+    {
+        var match = TrailingYearRegex().Match(name);
+
+        return match.Success && int.TryParse(match.Groups[1].ValueSpan, CultureInfo.InvariantCulture, out var year)
+            ? year
+            : null;
+    }
+
+    /// <summary>
     /// Reverses the order of the parts of a name.
     /// </summary>
     /// <param name="name">The name to reverse.</param>
@@ -1650,6 +1823,9 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
 
     [GeneratedRegex("banned", RegexOptions.IgnoreCase)]
     private static partial Regex BannedRegex();
+
+    [GeneratedRegex(@"\(([0-9]{4})\)\s*$", RegexOptions.CultureInvariant)]
+    private static partial Regex TrailingYearRegex();
 
     private struct GenreInfo
     {
