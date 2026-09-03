@@ -31,6 +31,12 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata;
 /// </summary>
 public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, SeriesInfo>, IHasOrder
 {
+    /// <summary>
+    /// The rating given to anime AniDB flags as adult, so that Jellyfin's parental controls
+    /// have something to act on.
+    /// </summary>
+    private const string AdultOfficialRating = "XXX";
+
     // AniDB bans a client that sends requests closer together than 2500ms, which is the
     // floor the configured interval is clamped to. A bucket limiter cannot express this: it
     // replenishes independently of when tokens are consumed, so an idle plugin holding a full
@@ -65,7 +71,173 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     private static readonly TimeSpan _maximumBanBackoff = TimeSpan.FromHours(24);
     private static readonly Lock _banLock = new();
 
-    private static readonly int[] IgnoredTagIds = [6, 22, 23, 60, 128, 129, 185, 216, 242, 255, 268, 269, 289];
+    /// <summary>
+    /// AniDB tags that are dropped before anything else looks at them, matched on the tag's own
+    /// id and on its parent id, so listing a branch also removes the tags directly under it.
+    /// </summary>
+    private static readonly int[] IgnoredTagIds =
+    [
+        // Maintenance tags. AniDB housekeeping that says nothing about the show.
+        3955,   // DESCRIPTION MISSING (1610)
+        5939,   // CAST MISSING (2042)
+        6850,   // STAFF MISSING (335)
+
+        // Origin. On more than 14000 anime between them, so they distinguish nothing.
+        6173,   // origin
+        6152,   // Chinese production (1471)
+        6166,   // South Korean production (288)
+        7885,   // Japanese production (14413)
+    ];
+
+    /// <summary>
+    /// The tags AniDB flags as 18+ content, dropped unless
+    /// <see cref="PluginConfiguration.IncludeAdultTags"/> says otherwise. Matched on the tag's
+    /// own id and on its parent id, so listing a branch also removes the tags under it. Kept
+    /// apart from <see cref="IgnoredTagIds"/> because whether these belong in a library is the
+    /// owner's call. Yuri and pornography are flagged by AniDB but left in, because
+    /// <see cref="GenreHelper"/> reads both as genres. The counts are the anime carrying each
+    /// tag when the list was taken.
+    /// </summary>
+    private static readonly int[] AdultTagIds =
+    [
+        301,    // lactation (169)
+        724,    // shotacon (0)
+        1172,   // sex slave (0)
+        1521,   // anal tail (0)
+        2016,   // inverted nipples (0)
+        2142,   // pubic hair (0)
+        2429,   // futanari (107)
+        2693,   // handjob (405)
+        2694,   // glory hole (6)
+        2696,   // threesome (497)
+        2698,   // pantyjob (101)
+        2699,   // sixty-nine (358)
+        2700,   // window fuck (94)
+        2701,   // pussy sandwich (83)
+        2702,   // boobjob (602)
+        2703,   // wakamezake (6)
+        2704,   // cum play (208)
+        2705,   // creampie (967)
+        2706,   // masturbation (715)
+        2707,   // internal shots (551)
+        2708,   // uncensored version available (594)
+        2709,   // netorare (203)
+        2710,   // squirting (253)
+        2711,   // urination (458)
+        2714,   // point of view (38)
+        2715,   // rape (835)
+        2717,   // anal (710)
+        2719,   // gang bang (363)
+        2720,   // bestiality (64)
+        2721,   // public sex (578)
+        2722,   // doggy style (840)
+        2724,   // double penetration (412)
+        2725,   // ahegao (242)
+        2726,   // prostitution (233)
+        2727,   // stomach stretch (100)
+        2728,   // fisting (36)
+        2730,   // exhibitionism (169)
+        2731,   // sex while on the phone (61)
+        2732,   // female rapes female (145)
+        2733,   // enjoyable rape (337)
+        2734,   // scissoring (67)
+        2736,   // mother-daughter incest (34)
+        2737,   // father-daughter incest (47)
+        2740,   // mother-son incest (57)
+        2742,   // futa x futa (16)
+        2743,   // futa x male (22)
+        2744,   // futa x female (88)
+        2747,   // hidden vibrator (101)
+        2828,   // borderline porn (188)
+        2842,   // incest (441)
+        2896,   // deflowering (697)
+        2899,   // strap-on dildo (113)
+        2900,   // dildos - vibrators (465)
+        2902,   // facesitting (90)
+        2903,   // scat (63)
+        2911,   // footjob (122)
+        2912,   // shimaidon (86)
+        2913,   // cum swapping (18)
+        2914,   // bukkake (128)
+        2918,   // cunnilingus (808)
+        2920,   // rimming (186)
+        2921,   // throat fucking (362)
+        2935,   // stomach bulge (97)
+        2995,   // nipple penetration (21)
+        3299,   // double fellatio (158)
+        3443,   // orgy (150)
+        3800,   // oyakodon (45)
+        4020,   // pegging (13)
+        4046,   // foursome (177)
+        4049,   // outdoor sex (405)
+        4207,   // doujin (22)
+        4492,   // gang rape (243)
+        4594,   // acidic breast milk (0)
+        4741,   // anal pissing (10)
+        5053,   // vagina dentata (0)
+        5327,   // urophagia (32)
+        5451,   // soapland (11)
+        5715,   // eye penetration (4)
+        5750,   // triple penetration (118)
+        6164,   // onahole (11)
+        6218,   // gokkun (252)
+        6221,   // cybersex (13)
+        6268,   // fellatio (1165)
+        6355,   // water sex (120)
+        6389,   // cervix penetration (60)
+        6443,   // wooden horse (34)
+        6455,   // double-sided dildo (59)
+        6507,   // pillory (8)
+        6519,   // autofellatio (6)
+        6520,   // foreskin sex (2)
+        6538,   // large areolae (0)
+        6572,   // FFM threesome (342)
+        6573,   // MMF threesome (120)
+        6731,   // wax play (38)
+        6829,   // sleeping sex (30)
+        6843,   // MMM threesome (8)
+        7004,   // prostate massage (56)
+        7148,   // impregnation with larvae (32)
+        7151,   // pregnant with larvae (0)
+        7229,   // fingering (410)
+        7247,   // sumata (83)
+        7251,   // cockring (18)
+        7399,   // orgasm denial (24)
+        7403,   // anal fingering (107)
+        7420,   // spitroast (77)
+        7422,   // reverse spitroast (63)
+        7560,   // suspension bondage (65)
+        7600,   // macrophilia (27)
+        7614,   // double assjob (3)
+        7615,   // assjob (13)
+        7633,   // petplay (17)
+        7829,   // FFF threesome (36)
+        7868,   // microphilia (4)
+        7886,   // wormhole sex (3)
+        7957,   // group sex (0)
+        7958,   // stripper (0)
+        8013,   // vaginal pissing (2)
+        8028,   // pasties (0)
+        8038,   // nipple stimulation (260)
+        8163,   // internal breast shots (3)
+        8266,   // double vaginal penetration (2)
+        8267,   // double anal penetration (0)
+        8268,   // biphallic (3)
+
+        // Branches AniDB leaves unflagged that explicit tags are filed under, matched as
+        // parent ids to clear those out.
+        1773,   // tentacle (335)
+        1894,   // shota (136)
+        2566,   // loli (394)
+        2608,   // fetishes (0)
+        2697,   // voyeurism (285)
+        2712,   // sex toys (276)
+        2729,   // BDSM (652)
+        2816,   // sexual fantasies (336)
+        2891,   // breasts (0)
+        2901,   // bondage (524)
+    ];
+
     private static readonly CompositeFormat _seriesQueryUrlFormat = CompositeFormat.Parse("http://api.anidb.net:9001/httpapi?request=anime&client={0}&clientver=1&protover=1&aid={1}");
 
     /// <summary>
@@ -587,6 +759,11 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
         {
             await reader.MoveToContentAsync().ConfigureAwait(false);
 
+            if (string.Equals(reader.GetAttribute("restricted"), "true", StringComparison.OrdinalIgnoreCase))
+            {
+                series.OfficialRating = AdultOfficialRating;
+            }
+
             while (await reader.ReadAsync().ConfigureAwait(false))
             {
                 if (reader.NodeType == XmlNodeType.Element)
@@ -715,11 +892,6 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
         {
             if (reader.NodeType == XmlNodeType.Element && reader.Name == "episode")
             {
-                if (int.TryParse(reader.GetAttribute("id"), out int id) && IgnoredTagIds.Contains(id))
-                {
-                    continue;
-                }
-
                 using var episodeSubtree = reader.ReadSubtree();
                 while (await episodeSubtree.ReadAsync().ConfigureAwait(false))
                 {
@@ -736,8 +908,20 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
         }
     }
 
+    private static bool IsIgnoredTag(int tagId)
+    {
+        if (IgnoredTagIds.Contains(tagId))
+        {
+            return true;
+        }
+
+        return !Plugin.Instance.Configuration.IncludeAdultTags && AdultTagIds.Contains(tagId);
+    }
+
     private static async Task ParseTags(Series series, XmlReader reader)
     {
+        var configuration = Plugin.Instance.Configuration;
+        var blacklist = GetTagBlacklist(configuration.TagBlacklist);
         var genres = new List<GenreInfo>();
 
         while (await reader.ReadAsync().ConfigureAwait(false))
@@ -749,13 +933,17 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
                     weight = 0;
                 }
 
-                if (int.TryParse(reader.GetAttribute("id"), out int id) && IgnoredTagIds.Contains(id))
+                // AniDB marks the tags it shows in the infobox on the anime's page. Read
+                // before the subtree, which moves off the element the attributes are on.
+                var infobox = string.Equals(reader.GetAttribute("infobox"), "true", StringComparison.OrdinalIgnoreCase);
+
+                if (int.TryParse(reader.GetAttribute("id"), CultureInfo.InvariantCulture, out int id) && IsIgnoredTag(id))
                 {
                     continue;
                 }
 
-                if (int.TryParse(reader.GetAttribute("parentid"), out int parentId)
-                    && IgnoredTagIds.Contains(parentId))
+                if (int.TryParse(reader.GetAttribute("parentid"), CultureInfo.InvariantCulture, out int parentId)
+                    && IsIgnoredTag(parentId))
                 {
                     continue;
                 }
@@ -766,12 +954,17 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
                     if (tagSubtree.NodeType == XmlNodeType.Element && tagSubtree.Name == "name")
                     {
                         var name = await tagSubtree.ReadElementContentAsStringAsync().ConfigureAwait(false);
-                        if (name == "18 restricted")
+
+                        // Decided before any filter: the rating is what parental controls act
+                        // on, and it must not depend on how the tag list was narrowed.
+                        if (string.Equals(name, "18 restricted", StringComparison.OrdinalIgnoreCase))
                         {
-                            series.OfficialRating = "XXX";
+                            series.OfficialRating = AdultOfficialRating;
                         }
 
-                        if (weight >= 400)
+                        if (weight >= configuration.MinimumTagWeight
+                            && (infobox || !configuration.InfoboxTagsOnly)
+                            && !blacklist.Contains(name))
                         {
                             genres.Add(new GenreInfo { Name = name, Weight = weight });
                         }
@@ -780,7 +973,28 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
             }
         }
 
-        series.Genres = [.. genres.OrderBy(g => g.Weight).Select(g => g.Name)];
+        // Descending: the list is later trimmed to the first MaxGenres entries, which must
+        // be the ones AniDB weighted highest.
+        var ordered = genres.OrderByDescending(g => g.Weight).Select(g => g.Name).ToArray();
+
+        series.Genres = ordered;
+
+        // Every tag that got this far is kept as a tag, whether or not it also names a
+        // genre. Which of them become genres is GenreHelper's business, and a tag list
+        // assembled there would vanish whenever genres were turned off.
+        series.Tags = [.. series.Tags.Concat(ordered).Distinct(StringComparer.OrdinalIgnoreCase)];
+    }
+
+    private static HashSet<string> GetTagBlacklist(string value)
+    {
+        var blacklist = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var name in value.Split([',', '\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            blacklist.Add(name);
+        }
+
+        return blacklist;
     }
 
     private static async Task ParseResources(Series series, XmlReader reader)
