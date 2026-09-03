@@ -57,7 +57,6 @@ public class PluginConfiguration : BasePluginConfiguration
     public PluginConfiguration()
     {
         TitlePreference = TitlePreferenceType.Localized;
-        OriginalTitlePreference = TitlePreferenceType.JapaneseRomaji;
         IgnoreSeason = false;
         TitleSimilarityThreshold = 50;
         MaxGenres = 5;
@@ -76,9 +75,12 @@ public class PluginConfiguration : BasePluginConfiguration
         TagBlacklist = string.Empty;
     }
 
+    /// <summary>
+    /// Gets or sets the language the displayed title is taken from. The original title is not
+    /// affected: it is always the romaji title, that being the Japanese title of the anime in
+    /// the alphabet the rest of the world reads it in.
+    /// </summary>
     public TitlePreferenceType TitlePreference { get; set; }
-
-    public TitlePreferenceType OriginalTitlePreference { get; set; }
 
     public bool IgnoreSeason { get; set; }
 
