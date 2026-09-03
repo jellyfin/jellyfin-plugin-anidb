@@ -37,6 +37,11 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     /// </summary>
     private const string AdultOfficialRating = "XXX";
 
+    /// <summary>
+    /// Where AniDB serves the pictures it names in a picture attribute.
+    /// </summary>
+    private const string PersonImageBaseUrl = "https://cdn.anidb.net/images/main/";
+
     // AniDB bans a client that sends requests closer together than 2500ms, which is the
     // floor the configured interval is clamped to. A bucket limiter cannot express this: it
     // replenishes independently of when tokens are consumed, so an idle plugin holding a full
@@ -272,11 +277,26 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
 
     private readonly IApplicationPaths _appPaths;
 
-    private readonly Dictionary<string, PersonKind> _typeMappings = new()
+    /// <summary>
+    /// What AniDB's creator types mean to Jellyfin. The role is what the cast list shows
+    /// under the name, so it keeps AniDB's own wording where Jellyfin has no kind for it.
+    /// </summary>
+    private static readonly Dictionary<string, (PersonKind Kind, string Role)> _creatorTypes = new(StringComparer.OrdinalIgnoreCase)
     {
-        { "Direction", PersonKind.Director },
-        { "Music", PersonKind.Composer },
-        { "Chief Animation Direction", PersonKind.Director }
+        { "Direction", (PersonKind.Director, "Director") },
+        { "Chief Direction", (PersonKind.Director, "Chief Director") },
+        { "Series Direction", (PersonKind.Director, "Series Director") },
+        { "Animation Direction", (PersonKind.Director, "Animation Director") },
+        { "Chief Animation Direction", (PersonKind.Director, "Chief Animation Director") },
+        { "Music", (PersonKind.Composer, "Music") },
+        { "Original Work", (PersonKind.Writer, "Original Creator") },
+        { "Story Composition", (PersonKind.Writer, "Story Composition") },
+        { "Series Composition", (PersonKind.Writer, "Series Composition") },
+        { "Screenplay", (PersonKind.Writer, "Screenplay") },
+        { "Original Plan", (PersonKind.Writer, "Original Plan") },
+        { "Character Design", (PersonKind.Artist, "Character Design") },
+        { "Main Character Design", (PersonKind.Artist, "Main Character Design") },
+        { "Animation Character Design", (PersonKind.Artist, "Animation Character Design") }
     };
 
     /// <summary>
@@ -1037,7 +1057,7 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
         return text.Replace("\n", "<br>", StringComparison.Ordinal);
     }
 
-    private async Task ParseActors(MetadataResult<Series> series, XmlReader reader)
+    private static async Task ParseActors(MetadataResult<Series> series, XmlReader reader)
     {
         while (await reader.ReadAsync().ConfigureAwait(false))
         {
@@ -1052,10 +1072,12 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
         }
     }
 
-    private async Task ParseActor(MetadataResult<Series> series, XmlReader reader)
+    private static async Task ParseActor(MetadataResult<Series> series, XmlReader reader)
     {
         string? name = null;
         string? role = null;
+        string? picture = null;
+        string? personId = null;
 
         while (await reader.ReadAsync().ConfigureAwait(false))
         {
@@ -1068,18 +1090,23 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
                         break;
 
                     case "seiyuu":
+                        // Read before the content, which moves off the element these are on.
+                        picture = reader.GetAttribute("picture");
+                        personId = reader.GetAttribute("id");
                         name = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
                         break;
                 }
             }
         }
 
-        if (!string.IsNullOrEmpty(name) && !string.IsNullOrEmpty(role)) // && series.People.All(p => p.Name != name))
+        if (!string.IsNullOrEmpty(name) && !string.IsNullOrEmpty(role))
         {
             series.AddPerson(CreatePerson(
                 Plugin.Instance.Configuration.AniDbReplaceGraves ? name.Replace('`', '\'') : name,
-                PersonType.Actor,
-                role));
+                PersonKind.Actor,
+                role,
+                GetPersonImageUrl(picture),
+                personId));
         }
     }
 
@@ -1131,13 +1158,14 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
         return (title, originalTitle);
     }
 
-    private async Task ParseCreators(MetadataResult<Series> series, XmlReader reader)
+    private static async Task ParseCreators(MetadataResult<Series> series, XmlReader reader)
     {
         while (await reader.ReadAsync().ConfigureAwait(false))
         {
             if (reader.NodeType == XmlNodeType.Element && reader.Name == "name")
             {
                 var type = reader.GetAttribute("type");
+                var personId = reader.GetAttribute("id");
                 var name = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
 
                 if (type == "Animation Work")
@@ -1146,28 +1174,57 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
                 }
                 else
                 {
+                    var (kind, role) = GetCreatorRole(type);
+
                     series.AddPerson(CreatePerson(
-                       Plugin.Instance.Configuration.AniDbReplaceGraves ? name.Replace('`', '\'') : name, type));
+                       Plugin.Instance.Configuration.AniDbReplaceGraves ? name.Replace('`', '\'') : name,
+                       kind,
+                       role,
+                       null,
+                       personId));
                 }
             }
         }
     }
 
-    private PersonInfo CreatePerson(string name, string? type, string? role = null)
+    private static (PersonKind Kind, string? Role) GetCreatorRole(string? type)
     {
-        // todo find nationality of person and conditionally reverse name order
-
-        if (!Enum.TryParse(type, out PersonKind personKind))
+        if (string.IsNullOrEmpty(type))
         {
-            personKind = type is null ? PersonKind.Actor : _typeMappings.GetValueOrDefault(type, PersonKind.Actor);
+            return (PersonKind.Unknown, null);
         }
 
-        return new PersonInfo
+        if (_creatorTypes.TryGetValue(type, out var mapped))
+        {
+            return mapped;
+        }
+
+        // Several AniDB types are already the name of a Jellyfin kind.
+        return Enum.TryParse<PersonKind>(type, true, out var parsed)
+            ? (parsed, type)
+            : (PersonKind.Unknown, type);
+    }
+
+    private static string? GetPersonImageUrl(string? picture)
+        => string.IsNullOrEmpty(picture) ? null : PersonImageBaseUrl + picture;
+
+    private static PersonInfo CreatePerson(string name, PersonKind kind, string? role = null, string? imageUrl = null, string? personId = null)
+    {
+        // todo find nationality of person and conditionally reverse name order
+        var person = new PersonInfo
         {
             Name = ReverseNameOrder(name),
-            Type = personKind,
-            Role = role
+            Type = kind,
+            Role = role,
+            ImageUrl = imageUrl
         };
+
+        if (!string.IsNullOrEmpty(personId))
+        {
+            person.ProviderIds[ProviderNames.AniDb] = personId;
+        }
+
+        return person;
     }
 
     /// <summary>
@@ -1448,7 +1505,7 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
                     var picture = seiyuu.Attribute("picture");
                     if (picture != null && !string.IsNullOrEmpty(picture.Value))
                     {
-                        person.Image = "https://cdn.anidb.net/images/main/" + picture.Value;
+                        person.Image = PersonImageBaseUrl + picture.Value;
                     }
 
                     var id = seiyuu.Attribute("id");
