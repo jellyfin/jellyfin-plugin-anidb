@@ -285,6 +285,15 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     /// </summary>
     private static bool _resumeLogged;
 
+    /// <summary>
+    /// How many callers are waiting for a request slot, how many requests have gone out since
+    /// the server started, and when the last one did. Reported by <see cref="GetRequestStatus"/>
+    /// and touched only through <see cref="Interlocked"/>.
+    /// </summary>
+    private static int _queuedRequests;
+    private static long _requestsSent;
+    private static long _lastRequestTicks;
+
     private readonly IApplicationPaths _appPaths;
 
     /// <summary>
@@ -672,26 +681,57 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     {
         ThrowIfBanned();
 
-        // The gate is held across the wait so that concurrent callers queue behind each
-        // other rather than all sleeping in parallel and then firing at the same moment.
-        await _requestGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        Interlocked.Increment(ref _queuedRequests);
+
         try
         {
-            // Task.Delay may fire fractionally early, so re-check the interval.
-            for (var remaining = GetRemainingInterval(); remaining > TimeSpan.Zero; remaining = GetRemainingInterval())
+            // The gate is held across the wait so that concurrent callers queue behind each
+            // other rather than all sleeping in parallel and then firing at the same moment.
+            await _requestGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
             {
-                await Task.Delay(remaining < _minimumDelay ? _minimumDelay : remaining, cancellationToken).ConfigureAwait(false);
+                // Task.Delay may fire fractionally early, so re-check the interval.
+                for (var remaining = GetRemainingInterval(); remaining > TimeSpan.Zero; remaining = GetRemainingInterval())
+                {
+                    await Task.Delay(remaining < _minimumDelay ? _minimumDelay : remaining, cancellationToken).ConfigureAwait(false);
+                }
+
+                // A caller ahead in the queue may have been banned while this one waited.
+                ThrowIfBanned();
+
+                _nextRequestTimestamp = Stopwatch.GetTimestamp() + GetRequestIntervalTicks();
+
+                Interlocked.Increment(ref _requestsSent);
+                Interlocked.Exchange(ref _lastRequestTicks, DateTime.UtcNow.Ticks);
             }
-
-            // A caller ahead in the queue may have been banned while this one waited.
-            ThrowIfBanned();
-
-            _nextRequestTimestamp = Stopwatch.GetTimestamp() + GetRequestIntervalTicks();
+            finally
+            {
+                _requestGate.Release();
+            }
         }
         finally
         {
-            _requestGate.Release();
+            Interlocked.Decrement(ref _queuedRequests);
         }
+    }
+
+    /// <summary>
+    /// How the plugin currently stands with AniDB, for the status the configuration page
+    /// shows. A scan that looks stalled is almost always one queued behind the rate limit or
+    /// waiting out a ban, and neither is visible from the library screen.
+    /// </summary>
+    /// <returns>What is left of any ban, how many requests are waiting for a slot, how long until the next may be sent, how many have been sent since the server started, and when the last one went out.</returns>
+    internal static (TimeSpan BanRemaining, int Queued, TimeSpan UntilNextRequest, long Sent, DateTime? LastSentUtc) GetRequestStatus()
+    {
+        var lastTicks = Interlocked.Read(ref _lastRequestTicks);
+        var untilNext = GetRemainingInterval();
+
+        return (
+            GetRemainingBanTime(),
+            Volatile.Read(ref _queuedRequests),
+            untilNext > TimeSpan.Zero ? untilNext : TimeSpan.Zero,
+            Interlocked.Read(ref _requestsSent),
+            lastTicks == 0 ? null : new DateTime(lastTicks, DateTimeKind.Utc));
     }
 
     /// <summary>
