@@ -31,12 +31,36 @@
                             <input id="chkTitleSimilarityThreshold" name="chkTitleSimilarityThreshold" type="number" is="emby-input" min="0" />
                             <div class="fieldDescription">Set this to zero to only automatically match if the title of the show is exactly the same. A value of one means that one character can be inserted or deleted.</div>
                         </div>
+                        <div class="inputContainer">
+                            <div class="fieldDescription">AniDB has no seasons: each one is a separate anime entry, and how those divide up is not how the provider numbering your seasons divides them. One entry can be four seasons of a long-running show, a season can end part way into one entry and finish in the next, and a film can sit among the specials. Which entry fills which season is therefore read from the community anime list, downloaded from GitHub once a week and kept in the plugin's cache. A show the list does not carry falls back to working the mapping out from AniDB's own relations and air dates.</div>
+                        </div>
                         <div class="checkboxContainer checkboxContainer-withDescription">
                             <label class="emby-checkbox-label">
                                 <input id="chkIgnoreSeason" name="chkIgnoreSeason" type="checkbox" is="emby-checkbox" />
                                 <span>Ignore Season</span>
                             </label>
-                            <div class="fieldDescription">AniDB doesn't support seasons. If checked, it will treat every season like season one, except for specials.</div>
+                            <div class="fieldDescription">Use the series' own AniDB entry for every season, numbering episodes straight through. This overrides the mapping described above, so it is only worth setting for a show the anime list places wrongly or does not carry at all - a long-running show kept as one AniDB entry, such as One Piece, no longer needs it. Leave unchecked to give each season the AniDB entry that belongs to it.</div>
+                        </div>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="chkUseAniDbSeasonNames" name="chkUseAniDbSeasonNames" type="checkbox" is="emby-checkbox" />
+                                <span>Name Seasons After Their AniDB Entry</span>
+                            </label>
+                            <div class="fieldDescription">AniDB gives every season of a show its own entry, with its own title. If checked, a season is named after the entry it was filled from. Uncheck to keep the plain "Season 2" naming that the other metadata providers leave behind.</div>
+                        </div>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="chkImportGenres" name="chkImportGenres" type="checkbox" is="emby-checkbox" />
+                                <span>Import Genres</span>
+                            </label>
+                            <div class="fieldDescription">Uncheck to take no genres from AniDB at all, leaving the genre list to whichever other provider fills it. AniDB derives genres from its tags, which are far more specific than a genre list usually is.</div>
+                        </div>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="chkImportTags" name="chkImportTags" type="checkbox" is="emby-checkbox" />
+                                <span>Import Tags</span>
+                            </label>
+                            <div class="fieldDescription">Uncheck to take no tags from AniDB. Independent of the genres above: a library can have AniDB's tags without its genres, or the other way round.</div>
                         </div>
                         <div class="inputContainer">
                             <label class="inputeLabel inputLabelUnfocused" for="chkMaxGenres">Max Genres</label>
@@ -48,12 +72,38 @@
                                 <input id="chkTitleCaseGenres" name="chkTitleCaseGenres" type="checkbox" is="emby-checkbox" />
                                 <span>Title Case Genres</span>
                             </label>
+                            <div class="fieldDescription">AniDB writes its tags in lower case. If checked, both genres and tags are capitalised for display.</div>
                         </div>
                         <div class="checkboxContainer checkboxContainer-withDescription">
                             <label class="emby-checkbox-label">
                                 <input id="chkTidyGenres" name="chkTidyGenres" type="checkbox" is="emby-checkbox" />
                                 <span>Tidy Genre List</span>
                             </label>
+                            <div class="fieldDescription">AniDB has thousands of tags, most of which name a plot element or a production detail rather than a genre. If checked, only the tags that name a genre are shown as genres, under common genre names. If unchecked, every tag AniDB rates highly enough becomes a genre. Either way the tags themselves are unaffected - use Import Tags above to turn those off.</div>
+                        </div>
+                        <div class="inputContainer">
+                            <label class="inputeLabel inputLabelUnfocused" for="chkMinimumTagWeight">Minimum Tag Weight</label>
+                            <input id="chkMinimumTagWeight" name="chkMinimumTagWeight" type="number" is="emby-input" min="0" />
+                            <div class="fieldDescription">AniDB weights every tag by how much of the show it describes. Tags below this weight are dropped, tags and genres alike. 400 is where AniDB itself stops treating a tag as descriptive; raise it to keep only what characterises the show.</div>
+                        </div>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="chkInfoboxTagsOnly" name="chkInfoboxTagsOnly" type="checkbox" is="emby-checkbox" />
+                                <span>Infobox Tags Only</span>
+                            </label>
+                            <div class="fieldDescription">AniDB marks the handful of tags it shows in the infobox on an anime's page. If checked, only those are imported, leaving out the tags that describe the setting, the cast or a production detail.</div>
+                        </div>
+                        <div class="inputContainer">
+                            <label class="inputeLabel inputLabelUnfocused" for="txtTagBlacklist">Tag Blacklist</label>
+                            <textarea id="txtTagBlacklist" name="txtTagBlacklist" is="emby-textarea" class="emby-textarea" rows="4"></textarea>
+                            <div class="fieldDescription">Tag names never to import, one per line or separated by commas. Matched whole and without regard to case, against the name AniDB uses.</div>
+                        </div>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="chkIncludeAdultTags" name="chkIncludeAdultTags" type="checkbox" is="emby-checkbox" />
+                                <span>Include Adult Tags</span>
+                            </label>
+                            <div class="fieldDescription">AniDB flags 125 of its tags as 18+ content, naming sexual acts and body parts in detail. Those are dropped, along with anything filed under them, unless this is checked. Anime AniDB flags as adult are rated as such either way, so parental controls are unaffected by this setting.</div>
                         </div>
                         <div class="selectContainer">
                             <label class="selectLabel" for="animeDefaultGenre">Anime Default Genre Name</label>
@@ -67,6 +117,11 @@
                             <label class="inputeLabel inputLabelUnfocused" for="chkMaxCacheAge">Maximum Cache Age</label>
                             <input id="chkMaxCacheAge" name="chkMaxCacheAge" type="number" is="emby-input" min="7" />
                             <div class="fieldDescription">How many days cached series metadata will be reused before fetching new metatdata from AniDB. Minimum 7 days: AniDB allows only a low number of requests per IP per day, and shorter windows will get your server banned.</div>
+                        </div>
+                        <div class="inputContainer">
+                            <label class="inputeLabel inputLabelUnfocused" for="chkRequestIntervalMs">Request Interval (ms)</label>
+                            <input id="chkRequestIntervalMs" name="chkRequestIntervalMs" type="number" is="emby-input" min="2500" step="100" />
+                            <div class="fieldDescription">How long to wait between two AniDB requests. Minimum 2500 ms, which is what AniDB itself allows. AniDB counts requests per IP rather than per client, so raise this if anything else on the same address talks to AniDB as well.</div>
                         </div>
                         <div class="checkboxContainer checkboxContainer-withDescription">
                             <label class="emby-checkbox-label">
@@ -94,13 +149,21 @@
                             document.getElementById('titleLanguage').value = config.TitlePreference;
                             document.getElementById('originalTitleLanguage').value = config.OriginalTitlePreference;
                             document.getElementById('chkIgnoreSeason').checked = config.IgnoreSeason;
+                            document.getElementById('chkUseAniDbSeasonNames').checked = config.UseAniDbSeasonNames;
+                            document.getElementById('chkImportGenres').checked = config.ImportGenres;
+                            document.getElementById('chkImportTags').checked = config.ImportTags;
                             document.getElementById('chkTitleSimilarityThreshold').value = config.TitleSimilarityThreshold;
                             document.getElementById('chkMaxGenres').value = config.MaxGenres;
                             document.getElementById('chkTitleCaseGenres').checked = config.TitleCaseGenres;
                             document.getElementById('chkTidyGenres').checked = config.TidyGenreList;
                             document.getElementById('animeDefaultGenre').value = config.AnimeDefaultGenre;
                             document.getElementById('chkMaxCacheAge').value = config.MaxCacheAge;
+                            document.getElementById('chkRequestIntervalMs').value = config.RequestIntervalMs;
                             document.getElementById('chkAniDbReplaceGraves').checked = config.AniDbReplaceGraves;
+                            document.getElementById('chkIncludeAdultTags').checked = config.IncludeAdultTags;
+                            document.getElementById('chkMinimumTagWeight').value = config.MinimumTagWeight;
+                            document.getElementById('chkInfoboxTagsOnly').checked = config.InfoboxTagsOnly;
+                            document.getElementById('txtTagBlacklist').value = config.TagBlacklist;
 
                             Dashboard.hideLoadingMsg();
                         });
@@ -113,13 +176,21 @@
                             config.TitlePreference = document.getElementById('titleLanguage').value;
                             config.OriginalTitlePreference = document.getElementById('originalTitleLanguage').value;
                             config.IgnoreSeason = document.getElementById('chkIgnoreSeason').checked;
+                            config.UseAniDbSeasonNames = document.getElementById('chkUseAniDbSeasonNames').checked;
+                            config.ImportGenres = document.getElementById('chkImportGenres').checked;
+                            config.ImportTags = document.getElementById('chkImportTags').checked;
                             config.TitleSimilarityThreshold = document.getElementById('chkTitleSimilarityThreshold').value;
                             config.MaxGenres = document.getElementById('chkMaxGenres').value;
                             config.TitleCaseGenres = document.getElementById('chkTitleCaseGenres').checked;
                             config.TidyGenreList = document.getElementById('chkTidyGenres').checked;
                             config.AnimeDefaultGenre = document.getElementById('animeDefaultGenre').value;
                             config.MaxCacheAge = document.getElementById('chkMaxCacheAge').value;
+                            config.RequestIntervalMs = document.getElementById('chkRequestIntervalMs').value;
                             config.AniDbReplaceGraves = document.getElementById('chkAniDbReplaceGraves').checked;
+                            config.IncludeAdultTags = document.getElementById('chkIncludeAdultTags').checked;
+                            config.MinimumTagWeight = document.getElementById('chkMinimumTagWeight').value;
+                            config.InfoboxTagsOnly = document.getElementById('chkInfoboxTagsOnly').checked;
+                            config.TagBlacklist = document.getElementById('txtTagBlacklist').value;
 
                             ApiClient.updatePluginConfiguration(AniDBConfigurationPage.pluginUniqueId, config).then(function (result) {
                                 Dashboard.processPluginConfigurationUpdateResult(result);
