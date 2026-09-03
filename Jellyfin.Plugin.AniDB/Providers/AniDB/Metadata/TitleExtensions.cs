@@ -22,7 +22,7 @@ public static class TitleExtensions
 
         if (preference == TitlePreferenceType.Localized)
         {
-            // prefer an official title, else look for a synonym
+            // Prefer an official title, else a synonym.
             var localized = titlesList.FirstOrDefault(t => t.Language == metadataLanguage && t.Type == "main") ??
                             titlesList.FirstOrDefault(t => t.Language == metadataLanguage && t.Type == "official") ??
                             titlesList.FirstOrDefault(t => t.Language == metadataLanguage && t.Type == "synonym");
@@ -35,7 +35,7 @@ public static class TitleExtensions
 
         if (preference == TitlePreferenceType.Japanese)
         {
-            // prefer an official title, else look for a synonym
+            // Prefer an official title, else a synonym.
             var japanese = titlesList.FirstOrDefault(t => t.Language == "ja" && t.Type == "main") ??
                            titlesList.FirstOrDefault(t => t.Language == "ja" && t.Type == "official") ??
                            titlesList.FirstOrDefault(t => t.Language == "ja" && t.Type == "synonym");
@@ -46,7 +46,7 @@ public static class TitleExtensions
             }
         }
 
-        // return the main title (romaji)
+        // The main title, which is romaji.
         return titlesList.FirstOrDefault(t => t.Language == "x-jat" && t.Type == "main") ??
                titlesList.FirstOrDefault(t => t.Type == "main") ??
                titlesList.FirstOrDefault();

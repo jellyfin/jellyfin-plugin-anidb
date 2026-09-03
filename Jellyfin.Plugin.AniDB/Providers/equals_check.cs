@@ -46,7 +46,7 @@ internal static partial class Equals_check
     {
         a = Regex.Escape(a);
 
-        // make characters that were escaped fuzzy
+        // Make the escaped characters fuzzy.
         a = a.Replace(@"\\", ".?", StringComparison.Ordinal);
         a = a.Replace(@"\*", ".?", StringComparison.Ordinal);
         a = a.Replace(@"\+", ".?", StringComparison.Ordinal);
@@ -61,14 +61,14 @@ internal static partial class Equals_check
         a = a.Replace(@"\.", ".?", StringComparison.Ordinal);
         a = a.Replace(@"\#", ".?", StringComparison.Ordinal);
 
-        // whitespace
+        // Whitespace.
         a = a.Replace(@"\ ", ".?.?.?", StringComparison.Ordinal);
         a = WhitespaceRegex().Replace(a, ".?.?.?");
 
-        // other characters
+        // Other characters.
         a = SpecialCharacterRegex().Replace(a, ".?");
 
-        // "words"
+        // Words.
         a = SAtEndBoundaryRegex().Replace(a, ".?s");
         a = a.Replace("Gekijyouban", "Gekijouban", StringComparison.OrdinalIgnoreCase);
         a = a.Replace("Mahoutsukai", "Mahou ?tsukai", StringComparison.OrdinalIgnoreCase);
@@ -275,15 +275,15 @@ internal static partial class Equals_check
         var results = new List<string>();
         string strippedName = StripYearRegex().Replace(name, string.Empty);
 
-        // The pattern embeds the search term as a fuzzy expression, so it cannot be a
-        // [GeneratedRegex]. Compiled is worth its build cost here: the atomic group
-        // backtracks heavily across a multi-megabyte document.
+        // The pattern embeds the search term, so it cannot be a [GeneratedRegex]. Compiled
+        // earns its build cost: the atomic group backtracks heavily across a multi-megabyte
+        // document.
         var searchRegex = new Regex(
             @"<anime aid=""([0-9]+)"">(?>[^<>]+|<(?!\/anime>)[^<>]*>)*?.*" + FuzzyRegexEscape(ShortenString(strippedName, 6, 20)),
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-        // Enumerate the matches once. Indexing into them one at a time re-scanned the whole
-        // document for every result, which made a common name quadratic in its match count.
+        // Enumerate once. Indexing in one at a time rescans the whole document per result,
+        // which is quadratic in the match count for a common name.
         foreach (Match match in searchRegex.Matches(xml))
         {
             string id = match.Groups[1].Value;
