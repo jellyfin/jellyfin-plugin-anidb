@@ -35,7 +35,7 @@ keeps inside another entry. Writing
 states such a thing outright. What it names is used as it stands, ahead of both sources; what it
 does not name is left to them. There is no setting to turn it on: the file being there is the
 setting, it is read again within five minutes of being changed, and the plugin page's **Status**
-section says where it goes, when it was last written and how many entries were read from it.
+section says where it goes, when it was last written and what has been read from it.
 
 The format is the AniBridge schema, so anything already written for those mappings can be pasted
 in. One key per AniDB entry, naming which of the entry's numberings it maps from, and under it
@@ -63,6 +63,26 @@ one key per season, naming ranges of the entry against ranges of the season:
 - The third corrects one season of a show the downloaded sources already place. The entry named
   need not be the one the show is identified as; the TVDB id is what ties the two together.
 
+A season's side can also list several ranges, and can end with a ratio weighting its episodes
+against the entry's, both of which the AniBridge schema writes and this reads:
+
+- `"1-12": "1-6,8-13"` names two ranges: the entry's twelve episodes fill the season's 1-6 and
+  8-13, leaving its episode 7 to be matched some other way. The schema lists several ranges on
+  the season's side only.
+- `"13-": "14-|2"` weights them two to one: each episode of the entry is two of the season's, so
+  the entry's 13 is the season's 14 and 15, its 14 is the season's 16 and 17, and both halves of
+  each are described by the one AniDB episode holding them. That is a library numbering a
+  two-part episode as two where AniDB lists it as one.
+- `"1-4": "1-2|-2"` weights them the other way about, a negative ratio being that many of the
+  entry's episodes to one of the season's: the entry's 1 and 2 are the season's episode 1, its 3
+  and 4 the season's 2. The season's episode is described by the first of the pair, AniDB
+  recording two and a library holding them as one episode having one place to put them.
+
+The ratio belongs to the season's side, and its sign says which way round the weighting goes, so
+there is nothing to write on the entry's side: `"1-2": "1|-2"` is what `"1": "1-2|2"` would say
+backwards. A run with no end written is weighted out as far as any season could run and no
+further.
+
 Two things to know when writing one:
 
 - A placement is checked against AniDB, and dropped with a warning in the log if it reads past
@@ -71,6 +91,36 @@ Two things to know when writing one:
 - A season the file places is not measured against how many episodes your library holds under
   it, which is what lets a deliberately partial placement stand. The episodes it leaves out get
   no metadata rather than being placed some other way.
+
+### Movies
+
+A movie is named by its own id with whichever provider rather than by a season, since your library
+holds it as one item:
+
+```json
+{
+  "anidb:7:R": { "tmdb_movie:128": { "1": "1" }, "imdb_movie:tt0119698": { "1": "1" } },
+  "anidb:665:O": { "tmdb_movie:123456": { "3": "1" } }
+}
+```
+
+`tmdb_movie:`, `imdb_movie:` and `tvdb_movie:` are all read, and TVDB numbers its movies apart
+from its series. The left side is the episode of the entry the movie is; the right side is always
+`1`, a movie having nothing to number.
+
+- The first line is a movie AniDB registered in its own right - anime 7 is Princess Mononoke, and
+  those are its real ids - so the movie is that entry's episode 1 and is described by the entry's
+  own record.
+- The second is a movie AniDB holds inside an entry registered for something else, under whatever
+  id your own copy carries: Berserk's Memorial Edition, a theatrical cut listed among a series'
+  other episodes. There the movie takes its name, date and running time from **that episode**
+  rather than from the entry, so several such movies of one show no longer come out as several
+  copies of the same title. Cast, studios, genres and rating still come from the entry: AniDB
+  records none of those per episode.
+
+Movies are also identified from the downloaded sources now, with no file of your own - AniBridge
+maps 2,853 of them and the anime list 2,084 - so a movie another provider has already given a
+TMDB, IMDb or TVDB id needs an override only where those two are wrong about it or silent.
 
 ## Installation
 

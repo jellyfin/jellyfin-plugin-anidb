@@ -138,7 +138,7 @@ public partial class AniDbEpisodeProvider(IServerConfigurationManager configurat
     /// <returns>The special's document, or <c>null</c> when it cannot be identified.</returns>
     private async Task<FileInfo?> FindSpecialXml(EpisodeInfo info, string seriesId, CancellationToken cancellationToken)
     {
-        // The mapping sources are where a film that the season numbering files among the
+        // The mapping sources are where a movie that the season numbering files among the
         // specials is recorded. Nothing about AniDB's own specials can turn one up: it is an
         // anime of its own there, with ordinary episodes.
         if (info.IndexNumber is { } specialNumber)
@@ -216,7 +216,7 @@ public partial class AniDbEpisodeProvider(IServerConfigurationManager configurat
 
         // Position is the one route that reads nothing about the episode itself, so it only
         // holds where the library and AniDB agree on what the specials are. A library whose
-        // specials season also holds a film, a trailer or an episode AniDB files elsewhere
+        // specials season also holds a movie, a trailer or an episode AniDB files elsewhere
         // lines up with nothing, and numbering straight down the list would give every special
         // after the first difference the wrong entry.
         var libraryCount = AniDbSeasonLayout.Read(_libraryManager, seriesId)?.SpecialsCount;
@@ -567,7 +567,16 @@ public partial class AniDbEpisodeProvider(IServerConfigurationManager configurat
             ? string.Empty
             : string.Concat(value.Where(char.IsLetterOrDigit)).ToLowerInvariant();
 
-    private static async Task ParseEpisodeXml(FileInfo xml, Episode episode, string preferredMetadataLanguage)
+    /// <summary>
+    /// Fills an episode from its cached document. Internal because a movie AniDB holds inside
+    /// another entry is one of these episodes, and the movie provider reads its own name and
+    /// air date from here rather than from the whole entry's record.
+    /// </summary>
+    /// <param name="xml">The episode's cached document.</param>
+    /// <param name="episode">The episode to fill.</param>
+    /// <param name="preferredMetadataLanguage">The language its title is wanted in.</param>
+    /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
+    internal static async Task ParseEpisodeXml(FileInfo xml, Episode episode, string preferredMetadataLanguage)
     {
         var settings = new XmlReaderSettings
         {
@@ -664,7 +673,14 @@ public partial class AniDbEpisodeProvider(IServerConfigurationManager configurat
         }
     }
 
-    private static FileInfo? GetEpisodeXmlFile(int? episodeNumber, string type, string seriesDataPath)
+    /// <summary>
+    /// The cached document of one episode of an entry.
+    /// </summary>
+    /// <param name="episodeNumber">The episode's number within the entry.</param>
+    /// <param name="type">The prefix of its numbering, from <see cref="AniDbEpisodeKindExtensions.Prefix"/>.</param>
+    /// <param name="seriesDataPath">Where the entry's documents are cached.</param>
+    /// <returns>The document, which may not exist, or <c>null</c> where no number was given.</returns>
+    internal static FileInfo? GetEpisodeXmlFile(int? episodeNumber, string type, string seriesDataPath)
     {
         if (episodeNumber == null)
         {
