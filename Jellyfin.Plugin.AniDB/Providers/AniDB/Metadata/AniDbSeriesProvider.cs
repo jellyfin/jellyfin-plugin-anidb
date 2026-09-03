@@ -598,9 +598,11 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
 
                             if (!string.IsNullOrWhiteSpace(val))
                             {
-                                if (DateTime.TryParse(val, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal, out DateTime date))
+                                // AniDB reports a calendar date with no time and no zone.
+                                // AssumeUniversal keeps it as written rather than reading it
+                                // as the server's local time and shifting it by that offset.
+                                if (DateTime.TryParse(val, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out DateTime date))
                                 {
-                                    date = date.ToUniversalTime();
                                     series.PremiereDate = date;
                                 }
                             }
@@ -612,9 +614,11 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
 
                             if (!string.IsNullOrWhiteSpace(endDate))
                             {
-                                if (DateTime.TryParse(endDate, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal, out DateTime date))
+                                // AniDB reports a calendar date with no time and no zone.
+                                // AssumeUniversal keeps it as written rather than reading it
+                                // as the server's local time and shifting it by that offset.
+                                if (DateTime.TryParse(endDate, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out DateTime date))
                                 {
-                                    date = date.ToUniversalTime();
                                     series.EndDate = date;
                                 }
                             }
@@ -724,12 +728,6 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
                         switch (episodeSubtree.Name)
                         {
                             case "epno":
-                                // var epno = episodeSubtree.ReadElementContentAsString();
-                                // EpisodeInfo info = new EpisodeInfo();
-                                // info.AnimeSeriesIndex = series.AnimeSeriesIndex;
-                                // info.IndexNumberEnd = string(epno);
-                                // info.SeriesProviderIds.GetValueOrDefault(ProviderNames.AniDb);
-                                // episodes.Add(info);
                                 break;
                         }
                     }
@@ -746,7 +744,7 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
         {
             if (reader.NodeType == XmlNodeType.Element && reader.Name == "tag")
             {
-                if (!int.TryParse(reader.GetAttribute("weight"), out int weight))
+                if (!int.TryParse(reader.GetAttribute("weight"), CultureInfo.InvariantCulture, out int weight))
                 {
                     weight = 0;
                 }
@@ -991,9 +989,8 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
         text = text.Replace("&#x0;", string.Empty, StringComparison.Ordinal);
 
         // Validate before touching the cache. AniDB answers a ban with an <error> document,
-        // and the daily quota is low, so overwriting good cached data with an error would
-        // force another request on the very next scan - precisely when no request must be
-        // made. On failure the previous cache is left intact.
+        // and overwriting good cached data with one would force another request on the next
+        // scan, exactly when none must be made.
         var errorRegexMatch = ErrorRegex().Match(text);
         if (errorRegexMatch.Success)
         {
@@ -1049,7 +1046,7 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
         }
         catch (DirectoryNotFoundException)
         {
-            // No biggie
+            // Nothing cached to remove.
         }
     }
 
@@ -1065,11 +1062,9 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
         };
 
         using var streamReader = new StreamReader(seriesDataPath, Encoding.UTF8);
-        // Use XmlReader for best performance
         using var reader = XmlReader.Create(streamReader, settings);
         await reader.MoveToContentAsync().ConfigureAwait(false);
 
-        // Loop through each element
         while (await reader.ReadAsync().ConfigureAwait(false))
         {
             if (reader.NodeType == XmlNodeType.Element)
@@ -1098,11 +1093,9 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
 
         using (var streamReader = new StreamReader(seriesDataPath, Encoding.UTF8))
         {
-            // Use XmlReader for best performance
             using var reader = XmlReader.Create(streamReader, settings);
             await reader.MoveToContentAsync().ConfigureAwait(false);
 
-            // Loop through each element
             while (await reader.ReadAsync().ConfigureAwait(false))
             {
                 if (reader.NodeType == XmlNodeType.Element && reader.Name == "characters")
@@ -1138,12 +1131,18 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
             {
                 try
                 {
-                    using var stream = File.Open(path, FileMode.Create);
-                    serializer.Serialize(stream, person);
+                    var partialPath = path + ".partial";
+
+                    using (var stream = File.Open(partialPath, FileMode.Create))
+                    {
+                        serializer.Serialize(stream, person);
+                    }
+
+                    File.Move(partialPath, path, true);
                 }
                 catch (IOException)
                 {
-                    // ignore
+                    // Another refresh is writing the same person; either copy will do.
                 }
             }
         }
@@ -1157,6 +1156,13 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     /// <returns>The cached person info, or <c>null</c> when it is not cached.</returns>
     public static AniDbPersonInfo? GetPersonInfo(string cachePath, string name)
     {
+        // The cache files a person under the first character of their name, so a blank one
+        // has nowhere to be looked up.
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return null;
+        }
+
         var path = GetCastPath(name, cachePath);
         var serializer = new XmlSerializer(typeof(AniDbPersonInfo));
 
@@ -1177,6 +1183,24 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
         }
         catch (IOException)
         {
+            return null;
+        }
+        catch (InvalidOperationException ex)
+        {
+            // What XmlSerializer throws for a document it cannot read. The file is only
+            // rewritten for a person who turns up again with an image, so leaving it would
+            // fail this person on every refresh. Removing it means simply not cached.
+            Logger?.LogWarning(ex, "Discarding the unreadable cached person file {Path}", path);
+
+            try
+            {
+                File.Delete(path);
+            }
+            catch (Exception deleteException) when (deleteException is IOException or UnauthorizedAccessException)
+            {
+                // The next refresh tries again.
+            }
+
             return null;
         }
 
@@ -1269,8 +1293,18 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
             Async = true
         };
 
-        using var writer = XmlWriter.Create(filename, writerSettings);
-        await writer.WriteRawAsync(xml).ConfigureAwait(false);
+        // Written beside the real file and moved onto it once complete. A crash or a full disk
+        // part way through a direct write would leave a truncated document, which is worse than
+        // none: it does not look stale, so every read of it fails until the cache window lapses.
+        var partialFilename = filename + ".partial";
+
+        using (var writer = XmlWriter.Create(partialFilename, writerSettings))
+        {
+            await writer.WriteRawAsync(xml).ConfigureAwait(false);
+            await writer.FlushAsync().ConfigureAwait(false);
+        }
+
+        File.Move(partialFilename, filename, true);
     }
 
     private static async Task SaveEpsiodeXml(string seriesDataDirectory, string xml)
@@ -1296,11 +1330,9 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
         };
 
         using var streamReader = new StringReader(xml);
-        // Use XmlReader for best performance
         using var reader = XmlReader.Create(streamReader, settings);
         await reader.MoveToContentAsync().ConfigureAwait(false);
 
-        // Loop through each element
         while (await reader.ReadAsync().ConfigureAwait(false))
         {
             if (reader.NodeType == XmlNodeType.Element)

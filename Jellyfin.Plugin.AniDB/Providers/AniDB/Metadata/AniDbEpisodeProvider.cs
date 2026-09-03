@@ -94,8 +94,8 @@ public class AniDbEpisodeProvider(IServerConfigurationManager configurationManag
 
         var item = metadataResult.Item;
 
-        return new[]
-        {
+        return
+        [
             new RemoteSearchResult
             {
                 IndexNumber = item.IndexNumber,
@@ -107,7 +107,7 @@ public class AniDbEpisodeProvider(IServerConfigurationManager configurationManag
                 SearchProviderName = Name,
                 IndexNumberEnd = item.IndexNumberEnd
             }
-        };
+        ];
     }
 
     /// <inheritdoc />
@@ -157,7 +157,7 @@ public class AniDbEpisodeProvider(IServerConfigurationManager configurationManag
                         var length = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
                         if (!string.IsNullOrEmpty(length))
                         {
-                            if (long.TryParse(length, out var duration))
+                            if (long.TryParse(length, CultureInfo.InvariantCulture, out var duration))
                             {
                                 episode.RunTimeTicks = TimeSpan.FromMinutes(duration).Ticks;
                             }
@@ -169,7 +169,7 @@ public class AniDbEpisodeProvider(IServerConfigurationManager configurationManag
                         var airdate = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
                         if (!string.IsNullOrEmpty(airdate))
                         {
-                            if (DateTime.TryParse(airdate, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal, out var date))
+                            if (DateTime.TryParse(airdate, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var date))
                             {
                                 episode.PremiereDate = date;
                             }

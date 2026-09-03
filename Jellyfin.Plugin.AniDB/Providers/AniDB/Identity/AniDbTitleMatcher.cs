@@ -11,8 +11,8 @@ using Microsoft.Extensions.Logging;
 namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Identity;
 
 /// <summary>
-/// The <see cref="AniDbTitleMatcher"/> class loads series titles from the series.xml file in the application data anidb folder,
-/// and provides the means to search for a the AniDB of a series by series title.
+/// Loads series titles from the titles file in the application data anidb folder and searches
+/// them for the AniDB id of a series.
 /// </summary>
 /// <remarks>
 /// Initializes a new instance of the <see cref="AniDbTitleMatcher"/> class.
@@ -98,11 +98,11 @@ public sealed class AniDbTitleMatcher(ILogger<AniDbTitleMatcher> logger, IAniDbT
         {
             if (c >= 0x2B0 && c <= 0x0333)
             {
-                // skip char modifier and diacritics
+                // Skip character modifiers and diacritics.
             }
             else if ("\"'!`?".Contains(c, StringComparison.Ordinal))
             {
-                // skip chars we are removing
+                // Skip the characters being removed.
             }
             else if ("/,.:;\\(){}[]+-_=–*".Contains(c, StringComparison.Ordinal)) // (there are not actually two - in the they are different char codes)
             {

@@ -53,6 +53,7 @@ public class AniDbMovieProvider(IApplicationPaths appPaths) : IRemoteMetadataPro
                         CommunityRating = seriesResult.Item.CommunityRating,
                         Studios = seriesResult.Item.Studios,
                         Genres = seriesResult.Item.Genres,
+                        Tags = seriesResult.Item.Tags,
                         ProviderIds = seriesResult.Item.ProviderIds
                     },
                     People = seriesResult.People,
