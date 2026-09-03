@@ -20,6 +20,58 @@
 
 This plugin adds the metadata provider for [aniDB](https://anidb.net/).
 
+## Mapping overrides
+
+The plugin works out which AniDB entry fills which season from two downloaded sources, the
+[AniBridge mappings](https://github.com/anibridge/anibridge-mappings) and the
+[Anime-Lists](https://github.com/Anime-Lists/anime-lists) anime list. Both describe AniDB as it
+is, so neither can describe a library that holds something AniDB does not list, or a show AniDB
+keeps inside another entry. Writing
+
+```
+<jellyfin config>/plugins/configurations/anidb-mapping-overrides.json
+```
+
+states such a thing outright. What it names is used as it stands, ahead of both sources; what it
+does not name is left to them. There is no setting to turn it on: the file being there is the
+setting, it is read again within five minutes of being changed, and the plugin page's **Status**
+section says where it goes, when it was last written and how many entries were read from it.
+
+The format is the AniBridge schema, so anything already written for those mappings can be pasted
+in. One key per AniDB entry, naming which of the entry's numberings it maps from, and under it
+one key per season, naming ranges of the entry against ranges of the season:
+
+```json
+{
+  "anidb:665:O": { "tvdb_show:70873:s3": { "1-13": "1-13" } },
+  "anidb:4521:S": { "tvdb_show:79093:s0": { "1-6": "1-6", "7-12": "8-13" } },
+  "anidb:7777:R": { "tvdb_show:441190:s4": { "1-12": "1-12" } }
+}
+```
+
+- `anidb:<id>:R` numbers the entry's ordinary episodes, `:S` its specials and `:O` its other
+  episodes. `tvdb_show:<id>:s<n>` is the season as your library numbers it, `s0` being the
+  specials. Ranges are `first-last` or a single number, the entry's on the left and the season's
+  on the right.
+- The first line above is a show AniDB holds as another entry's *other* episodes - Berserk's
+  Golden Age Arc Memorial Edition and Hellsing Ultimate Abridged are held that way. It both
+  identifies the show, there being no entry of its own to match by name, and fills its season.
+- The second is a specials season holding one special AniDB does not list, at position 7:
+  everything after it is one out of step, which without this costs the whole season its
+  numbering. Season specials named by no range - 7 here - are left to be matched by title and
+  air date, as any other unplaced special is.
+- The third corrects one season of a show the downloaded sources already place. The entry named
+  need not be the one the show is identified as; the TVDB id is what ties the two together.
+
+Two things to know when writing one:
+
+- A placement is checked against AniDB, and dropped with a warning in the log if it reads past
+  the end of the entry it names. Only ordinary episodes can be checked that way: AniDB publishes
+  no count of an entry's specials or other episodes, so a range over those is taken at your word.
+- A season the file places is not measured against how many episodes your library holds under
+  it, which is what lets a deliberately partial placement stand. The episodes it leaves out get
+  no metadata rather than being placed some other way.
+
 ## Installation
 
 [See the official documentation for install instructions](https://jellyfin.org/docs/general/server/plugins/index.html#installing).
