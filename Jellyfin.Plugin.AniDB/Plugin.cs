@@ -46,8 +46,8 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
         Instance = this;
         _httpClientFactory = httpClientFactory;
 
-        // The AniDB ban state is global to the plugin, so its logger has to be too. The
-        // logger must be in place before the ban is restored, or the warning is lost.
+        // Ban state is global to the plugin, so its logger has to be too, and has to be set
+        // before the ban is restored or the warning is lost.
         AniDbSeriesProvider.Logger = seriesLogger;
         AniDbSeriesProvider.RestoreBanState(Configuration);
 

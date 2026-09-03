@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -30,22 +31,36 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata;
 /// </summary>
 public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, SeriesInfo>, IHasOrder
 {
-    // AniDB allows one HTTP API request every 2-4 seconds; sending sequential requests
-    // closer together than 2500ms triggers an automatic ban, so that is the floor here.
-    // Bucket- and window-based limiters cannot express this: they replenish on a fixed
-    // cadence that is independent of when tokens are consumed, so a plugin that has been
-    // idle long enough to hold a full bucket can issue two requests back to back across a
-    // replenishment tick. Gate on the time elapsed since the previous request instead, and
-    // measure it with the monotonic clock so that system time changes cannot shorten it.
-    private static readonly TimeSpan _minimumRequestInterval = TimeSpan.FromMilliseconds(2500);
-    private static readonly long _minimumRequestIntervalTicks = (long)(Stopwatch.Frequency * _minimumRequestInterval.TotalSeconds);
+    // AniDB bans a client that sends requests closer together than 2500ms, which is the
+    // floor the configured interval is clamped to. A bucket limiter cannot express this: it
+    // replenishes independently of when tokens are consumed, so an idle plugin holding a full
+    // bucket can fire two requests back to back. Gate on the time since the previous request
+    // instead, measured with the monotonic clock so a system time change cannot shorten it.
     private static readonly TimeSpan _minimumDelay = TimeSpan.FromMilliseconds(1);
     private static readonly SemaphoreSlim _requestGate = new(1, 1);
 
-    // An AniDB ban is temporary but its remaining time cannot be queried, and reported
-    // durations range from 15 minutes to 24 hours depending on how badly the limit was
-    // exceeded. Repeatedly probing a banned server extends the ban, so back off for
-    // twice as long after each consecutive ban and reset once a request succeeds.
+    /// <summary>
+    /// How long an id AniDB has refused is left alone before it is asked for again. Long
+    /// enough that a scan does not keep paying for the same refusal, short enough that an
+    /// entry restored on AniDB's side is picked up the same day.
+    /// </summary>
+    private static readonly TimeSpan _retryAfterRefusal = TimeSpan.FromHours(6);
+
+    /// <summary>
+    /// One gate per anime, so that the episodes of a season refreshing together send one
+    /// request for the entry they share rather than one apiece.
+    /// </summary>
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> _downloadGates = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The ids AniDB has refused, and what it said. Kept because a refusal caches nothing, so
+    /// without it every episode of the show asks again and pays for the same answer.
+    /// </summary>
+    private static readonly ConcurrentDictionary<string, (DateTime At, string Message)> _refusedIds = new(StringComparer.Ordinal);
+
+    // A ban is temporary, but its remaining time cannot be queried and runs from 15 minutes
+    // to 24 hours. Probing a banned server extends the ban, so double the backoff after each
+    // consecutive ban and reset it once a request succeeds.
     private static readonly TimeSpan _initialBanBackoff = TimeSpan.FromMinutes(30);
     private static readonly TimeSpan _maximumBanBackoff = TimeSpan.FromHours(24);
     private static readonly Lock _banLock = new();
@@ -60,9 +75,9 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     private static long _nextRequestTimestamp = Stopwatch.GetTimestamp();
 
     /// <summary>
-    /// The UTC time at which the current ban is assumed to have lapsed. This is wall clock
-    /// rather than the monotonic clock used for request spacing, because a ban outlives the
-    /// process and has to stay meaningful across a restart. Guarded by <see cref="_banLock"/>.
+    /// The UTC time at which the current ban is assumed to have lapsed. Wall clock rather than
+    /// the monotonic clock used for request spacing, because a ban outlives the process.
+    /// Guarded by <see cref="_banLock"/>.
     /// </summary>
     private static DateTime _banUntilUtc = DateTime.MinValue;
 
@@ -78,8 +93,8 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     private static bool _banActive;
 
     /// <summary>
-    /// Whether the "resuming requests" message has already been logged for the current
-    /// ban, so that it is not repeated for every waiting request. Guarded by <see cref="_banLock"/>.
+    /// Whether the "resuming requests" message has already been logged for the current ban.
+    /// Guarded by <see cref="_banLock"/>.
     /// </summary>
     private static bool _resumeLogged;
 
@@ -252,27 +267,87 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     /// <returns>The path to the series data file.</returns>
     public static async Task<string> GetSeriesData(IApplicationPaths appPaths, string seriesId, CancellationToken cancellationToken)
     {
-        var dataPath = GetSeriesDataPath(appPaths, seriesId);
-        var seriesDataPath = Path.Combine(dataPath, "series.xml");
-        var fileInfo = new FileInfo(seriesDataPath);
+        var seriesDataPath = Path.Combine(GetSeriesDataPath(appPaths, seriesId), "series.xml");
 
-        var isEmpty = fileInfo.Exists && fileInfo.Length == 0;
-        var isStale = fileInfo.Exists && DateTime.UtcNow - fileInfo.LastWriteTimeUtc > TimeSpan.FromDays(Plugin.Instance.Configuration.MaxCacheAge);
-
-        if (!fileInfo.Exists || isEmpty || isStale)
+        if (!NeedsDownload(seriesDataPath))
         {
-            // A stale cache entry is still far better than no metadata at all, so while
-            // banned keep reading from disk rather than spending a request that would only
-            // be refused and lengthen the ban.
-            if (fileInfo.Exists && !isEmpty && GetRemainingBanTime() > TimeSpan.Zero)
+            return seriesDataPath;
+        }
+
+        // One download per anime at a time. Every episode of a season asks for the entry it is
+        // read from, and a scan refreshes them together, so without this they all find nothing
+        // cached and send the same request at once - one per episode, for one anime.
+        var gate = _downloadGates.GetOrAdd(seriesId, _ => new SemaphoreSlim(1, 1));
+
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+        try
+        {
+            // Whoever held the gate has very likely just downloaded it.
+            if (!NeedsDownload(seriesDataPath))
             {
                 return seriesDataPath;
             }
 
-            await DownloadSeriesData(seriesId, seriesDataPath, appPaths.CachePath, cancellationToken).ConfigureAwait(false);
+            var fileInfo = new FileInfo(seriesDataPath);
+            var hasCopy = fileInfo.Exists && fileInfo.Length > 0;
+
+            // While banned, read the stale copy rather than spend a request that would only
+            // be refused and lengthen the ban.
+            if (hasCopy && GetRemainingBanTime() > TimeSpan.Zero)
+            {
+                return seriesDataPath;
+            }
+
+            // AniDB refuses some ids outright - one it has deleted or merged away, or one set
+            // by hand that was never right - and answers with an error there is nothing to
+            // cache. Nothing being cached is what makes the next episode ask again, so one bad
+            // id costs a request for every file in the show, every scan. The refusal is
+            // remembered instead, and raised again without asking.
+            if (_refusedIds.TryGetValue(seriesId, out var refusal) && DateTime.UtcNow - refusal.At < _retryAfterRefusal)
+            {
+                throw new InvalidOperationException(refusal.Message);
+            }
+
+            try
+            {
+                await DownloadSeriesData(seriesId, seriesDataPath, appPaths.CachePath, cancellationToken).ConfigureAwait(false);
+
+                _refusedIds.TryRemove(seriesId, out _);
+            }
+            catch (InvalidOperationException ex)
+            {
+                _refusedIds[seriesId] = (DateTime.UtcNow, ex.Message);
+
+                Logger?.LogWarning(
+                    "AniDB refused anime {AnimeId}: {Error}. Nothing more will be asked of that id for {RetryAfter}, so the rest of the show does not spend a request each on the same refusal",
+                    seriesId,
+                    ex.Message,
+                    _retryAfterRefusal);
+
+                throw;
+            }
+        }
+        finally
+        {
+            gate.Release();
         }
 
         return seriesDataPath;
+    }
+
+    /// <summary>
+    /// Whether the cached document of an anime has to be downloaded before it can be read.
+    /// </summary>
+    /// <param name="seriesDataPath">The path of the cached document.</param>
+    /// <returns><c>true</c> when there is no usable copy on disk.</returns>
+    private static bool NeedsDownload(string seriesDataPath)
+    {
+        var fileInfo = new FileInfo(seriesDataPath);
+
+        return !fileInfo.Exists
+            || fileInfo.Length == 0
+            || DateTime.UtcNow - fileInfo.LastWriteTimeUtc > TimeSpan.FromDays(Plugin.Instance.Configuration.MaxCacheAge);
     }
 
     /// <summary>
@@ -289,18 +364,16 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
         await _requestGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            // Task.Delay may fire fractionally early, so re-check rather than assuming a
-            // single delay was enough to clear the interval.
+            // Task.Delay may fire fractionally early, so re-check the interval.
             for (var remaining = GetRemainingInterval(); remaining > TimeSpan.Zero; remaining = GetRemainingInterval())
             {
                 await Task.Delay(remaining < _minimumDelay ? _minimumDelay : remaining, cancellationToken).ConfigureAwait(false);
             }
 
-            // A caller ahead of this one in the queue may have been banned while this one
-            // waited, so re-check instead of draining the whole backlog into a banned server.
+            // A caller ahead in the queue may have been banned while this one waited.
             ThrowIfBanned();
 
-            _nextRequestTimestamp = Stopwatch.GetTimestamp() + _minimumRequestIntervalTicks;
+            _nextRequestTimestamp = Stopwatch.GetTimestamp() + GetRequestIntervalTicks();
         }
         finally
         {
@@ -406,8 +479,8 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     {
         lock (_banLock)
         {
-            // Every successful download lands here, so do nothing unless a ban was actually
-            // in effect. Otherwise the configuration would be rewritten once per series.
+            // Every successful download lands here, so do nothing unless a ban was in
+            // effect. Otherwise the configuration would be rewritten once per series.
             if (!_banActive && _banUntilUtc == DateTime.MinValue && _currentBanBackoff == _initialBanBackoff)
             {
                 return;
@@ -475,14 +548,27 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
         }
         catch (Exception ex)
         {
-            // Losing the record only costs the ban its ability to outlive a restart, so this
-            // must not be allowed to fail the metadata request that discovered it.
+            // Losing the record only costs the ban its ability to outlive a restart, which
+            // must not fail the request that discovered it.
             Logger?.LogWarning(ex, "Could not persist the AniDB ban state, so it will not survive a restart");
         }
     }
 
     private static TimeSpan GetRemainingInterval()
         => Stopwatch.GetElapsedTime(Stopwatch.GetTimestamp(), _nextRequestTimestamp);
+
+    /// <summary>
+    /// Gets the configured gap between two AniDB requests, in monotonic clock ticks. Read per
+    /// request so that changing the setting takes effect without a restart.
+    /// </summary>
+    /// <returns>The request interval in <see cref="Stopwatch"/> ticks.</returns>
+    private static long GetRequestIntervalTicks()
+    {
+        var interval = Plugin.Instance?.Configuration.RequestIntervalMs
+            ?? PluginConfiguration.MinimumRequestIntervalMs;
+
+        return (long)(Stopwatch.Frequency * (interval / 1000d));
+    }
 
     private async Task FetchSeriesInfo(MetadataResult<Series> result, string seriesDataPath, string preferredMetadataLangauge)
     {
@@ -926,9 +1012,18 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
             throw new InvalidOperationException("AniDB API error " + errorRegexMatch.Value);
         }
 
+        // An empty body is how the API turns a request away once it has stopped answering, so
+        // it counts as a ban. Treating it as a one-off failure would let a scan carry on
+        // asking, which is what turns a short refusal into a ban measured in days.
         if (string.IsNullOrWhiteSpace(text))
         {
-            throw new InvalidOperationException("AniDB returned an empty response for anime " + aid);
+            var retryAfter = RegisterBan();
+
+            throw new AniDbBannedException(
+                string.Format(CultureInfo.InvariantCulture, "AniDB returned an empty response for anime {0}; pausing all AniDB requests for {1}.", aid, retryAfter))
+            {
+                RetryAfter = retryAfter
+            };
         }
 
         RegisterSuccess();
