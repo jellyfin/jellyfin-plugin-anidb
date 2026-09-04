@@ -640,7 +640,7 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     /// <inheritdoc />
     public async Task<HttpResponseMessage> GetImageResponse(string url, CancellationToken cancellationToken)
     {
-        await WaitForRequestSlot(cancellationToken).ConfigureAwait(false);
+        await WaitForImageSlot(cancellationToken).ConfigureAwait(false);
         var httpClient = Plugin.Instance.GetHttpClient();
 
         return await httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
@@ -743,9 +743,27 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     /// </summary>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
-    internal static async Task WaitForRequestSlot(CancellationToken cancellationToken)
+    internal static Task WaitForRequestSlot(CancellationToken cancellationToken)
+        => WaitForSlot(true, cancellationToken);
+
+    /// <summary>
+    /// Waits for the slot an image download takes. Images come from AniDB's image server rather
+    /// than from its API, which counts and bans separately, so a download waits its turn like
+    /// anything else but is not held back by a ban on the API. Otherwise a poster the API has
+    /// already described is lost for as long as the ban lasts, which is what leaves a show
+    /// identified during one without its artwork until someone picks it by hand.
+    /// </summary>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
+    internal static Task WaitForImageSlot(CancellationToken cancellationToken)
+        => WaitForSlot(false, cancellationToken);
+
+    private static async Task WaitForSlot(bool countsAgainstTheApi, CancellationToken cancellationToken)
     {
-        ThrowIfBanned();
+        if (countsAgainstTheApi)
+        {
+            ThrowIfBanned();
+        }
 
         Interlocked.Increment(ref _queuedRequests);
 
@@ -763,7 +781,10 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
                 }
 
                 // A caller ahead in the queue may have been banned while this one waited.
-                ThrowIfBanned();
+                if (countsAgainstTheApi)
+                {
+                    ThrowIfBanned();
+                }
 
                 _nextRequestTimestamp = Stopwatch.GetTimestamp() + GetRequestIntervalTicks();
 
