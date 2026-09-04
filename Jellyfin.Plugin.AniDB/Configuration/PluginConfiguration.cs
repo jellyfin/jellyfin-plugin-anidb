@@ -74,6 +74,9 @@ public class PluginConfiguration : BasePluginConfiguration
         InfoboxTagsOnly = false;
         TagBlacklist = string.Empty;
         UseAniBridgeMappings = true;
+        ImportCommunityRating = true;
+        PublishMappedIds = false;
+        CastShowsCharacters = false;
     }
 
     /// <summary>
@@ -100,6 +103,30 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <see cref="ImportGenres"/>.
     /// </summary>
     public bool ImportTags { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether AniDB's rating is kept. Jellyfin holds one rating
+    /// per item rather than one per provider, so a library taking ratings from somewhere else, or
+    /// wanting none, has to turn this off rather than choose between them.
+    /// </summary>
+    public bool ImportCommunityRating { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the TVDB and TMDB ids the mapping sources file a
+    /// show under are written onto it. They are what the image providers of those sites, and
+    /// fanart, are keyed by, so filling them in is what lets those fetch artwork for a show this
+    /// plugin identified. Off by default: the id also arms the metadata providers of those sites
+    /// where they are enabled. An id already set is never replaced.
+    /// </summary>
+    public bool PublishMappedIds { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the cast lists the characters rather than the
+    /// actors voicing them, each named after the character and credited with its actor. AniDB
+    /// records both, and Jellyfin has no kind of its own for a character, so it is one or the
+    /// other.
+    /// </summary>
+    public bool CastShowsCharacters { get; set; }
 
     public bool TidyGenreList { get; set; }
 

@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Jellyfin.Plugin.AniDB.Tests</RootNamespace>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+
+    <!-- xunit.v3 is a Microsoft.Testing.Platform runner: the test assembly hosts itself
+         rather than being loaded by one. `dotnet test` is pointed at that runner by the
+         global.json beside the solution. -->
+    <OutputType>Exe</OutputType>
+
+    <!-- The plugin turns every analyser on and treats warnings as errors. The tests are held
+         to the compiler's own rules, but not to the documentation and naming rules meant for
+         shipped code: a test method's name is its description. -->
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
+    <PackageReference Include="xunit.v3" Version="4.0.0" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Jellyfin.Plugin.AniDB\Jellyfin.Plugin.AniDB.csproj" />
+  </ItemGroup>
+
+</Project>

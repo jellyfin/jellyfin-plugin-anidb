@@ -29,6 +29,18 @@ namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata;
 /// <param name="logger">Instance of the <see cref="ILogger{AniDbEpisodeProvider}"/> interface.</param>
 public partial class AniDbEpisodeProvider(IServerConfigurationManager configurationManager, ILibraryManager libraryManager, ILogger<AniDbEpisodeProvider> logger) : IRemoteMetadataProvider<Episode, EpisodeInfo>
 {
+    /// <summary>
+    /// The numberings the library can only have filed among its specials, in the order a
+    /// specials season runs through them.
+    /// </summary>
+    private static readonly AniDbEpisodeKind[] _extraKinds =
+    [
+        AniDbEpisodeKind.Special,
+        AniDbEpisodeKind.Credits,
+        AniDbEpisodeKind.Trailer,
+        AniDbEpisodeKind.Parody,
+    ];
+
     private readonly IServerConfigurationManager _configurationManager = configurationManager;
     private readonly ILibraryManager _libraryManager = libraryManager;
     private readonly ILogger<AniDbEpisodeProvider> _logger = logger;
@@ -206,7 +218,7 @@ public partial class AniDbEpisodeProvider(IServerConfigurationManager configurat
         if (specials.Count == 0)
         {
             _logger.LogWarning(
-                "None of the {EntryCount} AniDB entries of series {SeriesId} has any special, so special {EpisodeNumber} stays without metadata",
+                "None of the {EntryCount} AniDB entries of series {SeriesId} has any special, creditless opening, trailer or parody, so special {EpisodeNumber} stays without metadata",
                 chain.Count,
                 seriesId,
                 info.IndexNumber);
@@ -220,17 +232,22 @@ public partial class AniDbEpisodeProvider(IServerConfigurationManager configurat
         // lines up with nothing, and numbering straight down the list would give every special
         // after the first difference the wrong entry.
         var libraryCount = AniDbSeasonLayout.Read(_libraryManager, seriesId)?.SpecialsCount;
-        var aligned = Align(specials, libraryCount);
+
+        // Counted through AniDB's specials alone. A library that holds the creditless openings
+        // too holds more than the specials season AniDB describes, and a library that holds none
+        // of them would be numbered off the end of its own season by a list padded with them.
+        var aligned = Align([.. specials.Where(special => special.Kind == AniDbEpisodeKind.Special)], libraryCount);
 
         var match = MatchById(specials, info)
             ?? MatchByTitle(specials, info)
+            ?? MatchByCreditsName(specials, info)
             ?? MatchByDate(specials, info)
             ?? (aligned == null ? null : MatchByPosition(aligned, info));
 
         if (match == null)
         {
             _logger.LogWarning(
-                "Special {EpisodeNumber} of AniDB series {SeriesId} matches none of the {SpecialCount} specials across its {EntryCount} AniDB entries by id, title or air date, so it stays without metadata. The library has {LibraryCount} specials, which line up with neither the whole of that list nor any single entry of it, so they cannot be numbered straight through. Set its AniDB id by hand to fill it in",
+                "Special {EpisodeNumber} of AniDB series {SeriesId} matches none of the {SpecialCount} specials, creditless openings, trailers and parodies across its {EntryCount} AniDB entries by id, title or air date, so it stays without metadata. The library has {LibraryCount} specials, which line up with neither the whole of that list nor any single entry of it, so they cannot be numbered straight through. Set its AniDB id by hand to fill it in",
                 info.IndexNumber,
                 seriesId,
                 specials.Count,
@@ -309,19 +326,34 @@ public partial class AniDbEpisodeProvider(IServerConfigurationManager configurat
 
             var inEntry = new List<AniDbSpecial>();
 
-            foreach (var path in Directory.EnumerateFiles(folder, "episode-S*.xml"))
+            // Asked for one numbering at a time so that the file system does the narrowing. An
+            // entry of a long running show holds a thousand ordinary episodes, and none of them
+            // is ever an answer here.
+            foreach (var kind in _extraKinds)
             {
-                var number = SpecialNumberRegex().Match(Path.GetFileName(path));
-                if (!number.Success || !int.TryParse(number.Groups[1].ValueSpan, CultureInfo.InvariantCulture, out var index))
-                {
-                    continue;
-                }
+                var prefix = kind.Prefix();
 
-                inEntry.Add(await ParseSpecial(path, animeId, index).ConfigureAwait(false));
+                foreach (var path in Directory.EnumerateFiles(folder, FormattableString.Invariant($"episode-{prefix}*.xml")))
+                {
+                    var number = SpecialNumberRegex().Match(Path.GetFileName(path));
+
+                    // The pattern is matched again rather than trusted to the glob, which on a
+                    // case insensitive file system answers for every other numbering too.
+                    if (!number.Success
+                        || !string.Equals(number.Groups[1].Value, prefix, StringComparison.Ordinal)
+                        || !int.TryParse(number.Groups[2].ValueSpan, CultureInfo.InvariantCulture, out var index))
+                    {
+                        continue;
+                    }
+
+                    inEntry.Add(await ParseSpecial(path, animeId, index, kind).ConfigureAwait(false));
+                }
             }
 
-            // Directory order is the file system's. AniDB's numbering is the real order.
-            specials.AddRange(inEntry.OrderBy(special => special.Number));
+            // Directory order is the file system's. AniDB's numbering is the real order, within
+            // each of its numberings; the specials come first, being what the library is likeliest
+            // to hold and what a season counted straight through is numbered by.
+            specials.AddRange(inEntry.OrderBy(special => special.Kind).ThenBy(special => special.Number));
         }
 
         return specials;
@@ -424,7 +456,7 @@ public partial class AniDbEpisodeProvider(IServerConfigurationManager configurat
         return Path.GetDirectoryName(seriesDataPath);
     }
 
-    private static async Task<AniDbSpecial> ParseSpecial(string path, string animeId, int number)
+    private static async Task<AniDbSpecial> ParseSpecial(string path, string animeId, int number, AniDbEpisodeKind kind)
     {
         var settings = new XmlReaderSettings
         {
@@ -478,7 +510,7 @@ public partial class AniDbEpisodeProvider(IServerConfigurationManager configurat
             }
         }
 
-        return new AniDbSpecial(animeId, path, number, episodeId, airDate, titles);
+        return new AniDbSpecial(animeId, path, number, episodeId, airDate, titles, kind);
     }
 
     /// <summary>
@@ -515,6 +547,45 @@ public partial class AniDbEpisodeProvider(IServerConfigurationManager configurat
 
         var matches = specials
             .Where(special => special.Titles.Any(title => string.Equals(Normalize(title), name, StringComparison.Ordinal)))
+            .ToList();
+
+        return matches.Count == 1 ? matches[0] : null;
+    }
+
+    /// <summary>
+    /// Matches a creditless opening or ending named the way a library names one rather than the
+    /// way AniDB titles it. AniDB calls them "Opening 1" and "Ending 2"; a library files them as
+    /// "OP1", "NCOP1", "ED2" or "NCED2", which no amount of normalising makes equal. Only an
+    /// unambiguous hit counts, so a numbering the titles do not settle matches nothing rather
+    /// than the wrong opening.
+    /// </summary>
+    /// <param name="specials">The specials to match against.</param>
+    /// <param name="info">The episode lookup info.</param>
+    /// <returns>The matching special, or <c>null</c>.</returns>
+    private static AniDbSpecial? MatchByCreditsName(IReadOnlyList<AniDbSpecial> specials, EpisodeInfo info)
+    {
+        if (string.IsNullOrWhiteSpace(info.Name))
+        {
+            return null;
+        }
+
+        var named = CreditsNameRegex().Match(info.Name.Trim());
+
+        if (!named.Success)
+        {
+            return null;
+        }
+
+        // AniDB titles both under the one numbering, so the word is the whole of the difference.
+        var wanted = named.Groups["kind"].Value.StartsWith('o') || named.Groups["kind"].Value.StartsWith('O')
+            ? "opening"
+            : "ending";
+
+        var ordinal = named.Groups["number"].Value;
+
+        var matches = specials
+            .Where(special => special.Kind == AniDbEpisodeKind.Credits
+                && special.Titles.Any(title => Normalize(title).Contains(wanted + ordinal, StringComparison.Ordinal)))
             .ToList();
 
         return matches.Count == 1 ? matches[0] : null;
@@ -631,7 +702,8 @@ public partial class AniDbEpisodeProvider(IServerConfigurationManager configurat
                         break;
 
                     case "rating":
-                        if (int.TryParse(reader.GetAttribute("votes"), NumberStyles.Any, CultureInfo.InvariantCulture, out _))
+                        if (Plugin.Instance.Configuration.ImportCommunityRating
+                            && int.TryParse(reader.GetAttribute("votes"), NumberStyles.Any, CultureInfo.InvariantCulture, out _))
                         {
                             var ratingText = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
                             if (float.TryParse(ratingText, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var rating))
@@ -656,8 +728,7 @@ public partial class AniDbEpisodeProvider(IServerConfigurationManager configurat
                         break;
 
                     case "summary":
-                        var overview = AniDbSeriesProvider.ReplaceNewLine(await reader.ReadElementContentAsStringAsync().ConfigureAwait(false));
-                        episode.Overview = Plugin.Instance.Configuration.AniDbReplaceGraves ? overview.Replace('`', '\'') : overview;
+                        episode.Overview = AniDbDescription.Clean(await reader.ReadElementContentAsStringAsync().ConfigureAwait(false));
 
                         break;
                 }
@@ -691,8 +762,16 @@ public partial class AniDbEpisodeProvider(IServerConfigurationManager configurat
         return new FileInfo(filename);
     }
 
-    [GeneratedRegex(@"^episode-S(\d+)\.xml$")]
+    [GeneratedRegex(@"^episode-([A-Z]*)(\d+)\.xml$")]
     private static partial Regex SpecialNumberRegex();
+
+    /// <summary>
+    /// A name that says nothing but which creditless opening or ending this is. The trailing
+    /// letter is the one a second version of the same opening is given, as in "NCOP1b".
+    /// </summary>
+    /// <returns>The pattern.</returns>
+    [GeneratedRegex(@"^(?:nc|creditless[\s_-]*)?(?<kind>op(?:ening)?|ed|ending)[\s_-]*(?<number>\d*)[a-z]?$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex CreditsNameRegex();
 
     /// <summary>
     /// A special held by one AniDB entry.
@@ -703,11 +782,13 @@ public partial class AniDbEpisodeProvider(IServerConfigurationManager configurat
     /// <param name="EpisodeId">Its own AniDB episode id.</param>
     /// <param name="AirDate">The date it aired.</param>
     /// <param name="Titles">Every title AniDB records for it.</param>
+    /// <param name="Kind">Which of the entry's numberings it belongs to.</param>
     private sealed record AniDbSpecial(
         string AnimeId,
         string Path,
         int Number,
         string? EpisodeId,
         DateTime? AirDate,
-        IReadOnlyList<string> Titles);
+        IReadOnlyList<string> Titles,
+        AniDbEpisodeKind Kind);
 }

@@ -31,17 +31,26 @@ internal sealed class AniBridgeIndex
     private readonly IReadOnlyDictionary<string, IReadOnlyList<AniBridgeEntry>> _bySeries;
     private readonly IReadOnlyDictionary<string, string> _firstSeasonByTmdb;
     private readonly IReadOnlyDictionary<string, AniDbAnimeListEpisode> _movies;
+    private readonly IReadOnlyDictionary<string, string> _tmdbByAnimeId;
+    private readonly IReadOnlyDictionary<AniDbAnimeListEpisode, IReadOnlyList<string>> _movieKeys;
+    private readonly IReadOnlyDictionary<string, AniDbAnimeListEpisode> _soleMovieByAnimeId;
 
     private AniBridgeIndex(
         IReadOnlyDictionary<string, AniBridgeEntry> byAnimeId,
         IReadOnlyDictionary<string, IReadOnlyList<AniBridgeEntry>> bySeries,
         IReadOnlyDictionary<string, string> firstSeasonByTmdb,
-        IReadOnlyDictionary<string, AniDbAnimeListEpisode> movies)
+        IReadOnlyDictionary<string, AniDbAnimeListEpisode> movies,
+        IReadOnlyDictionary<string, string> tmdbByAnimeId,
+        IReadOnlyDictionary<AniDbAnimeListEpisode, IReadOnlyList<string>> movieKeys,
+        IReadOnlyDictionary<string, AniDbAnimeListEpisode> soleMovieByAnimeId)
     {
         _byAnimeId = byAnimeId;
         _bySeries = bySeries;
         _firstSeasonByTmdb = firstSeasonByTmdb;
         _movies = movies;
+        _tmdbByAnimeId = tmdbByAnimeId;
+        _movieKeys = movieKeys;
+        _soleMovieByAnimeId = soleMovieByAnimeId;
     }
 
     /// <summary>
@@ -182,6 +191,31 @@ internal sealed class AniBridgeIndex
     /// <returns>The TVDB id, or <c>null</c> where the mappings do not place that entry.</returns>
     public string? SeriesKeyOf(string animeId)
         => _byAnimeId.TryGetValue(animeId, out var entry) ? entry.SeriesKey : null;
+
+    /// <summary>
+    /// The TMDB show an entry is placed against, where the mappings place it against one. Not
+    /// every show they place has a TMDB id; the TVDB id is what they are keyed by.
+    /// </summary>
+    /// <param name="animeId">The AniDB id of an entry of the show.</param>
+    /// <returns>The TMDB show id, or <c>null</c> where the mappings name none for that entry.</returns>
+    public string? TmdbShowOf(string animeId)
+        => _tmdbByAnimeId.GetValueOrDefault(animeId);
+
+    /// <summary>
+    /// Every key the mappings file a movie under, given the AniDB episode it is. Answers for an
+    /// entry whose episode is not known only where the entry holds a single movie.
+    /// </summary>
+    /// <param name="animeId">The AniDB id of the entry holding the movie.</param>
+    /// <param name="episode">Which of its episodes the movie is, where that is known.</param>
+    /// <returns>The keys, in no particular order, which is empty where the movie is not identified.</returns>
+    public IReadOnlyList<string> MovieKeysOf(string animeId, AniDbAnimeListEpisode? episode)
+    {
+        var wanted = episode ?? _soleMovieByAnimeId.GetValueOrDefault(animeId);
+
+        return wanted == null || !string.Equals(wanted.AnimeId, animeId, StringComparison.Ordinal)
+            ? []
+            : _movieKeys.GetValueOrDefault(wanted) ?? [];
+    }
 
     /// <summary>
     /// Works out which of a show's entries fill the given season, and which of their episodes
@@ -455,6 +489,7 @@ internal sealed class AniBridgeIndex
             StringComparer.Ordinal);
 
         var firstSeasonByTmdb = new Dictionary<string, string>(StringComparer.Ordinal);
+        var tmdbByAnimeId = new Dictionary<string, string>(StringComparer.Ordinal);
 
         foreach (var (tmdbId, claims) in tmdbCandidates)
         {
@@ -465,7 +500,45 @@ internal sealed class AniBridgeIndex
                 .First();
 
             firstSeasonByTmdb[tmdbId] = first.AnimeId;
+
+            foreach (var claim in claims)
+            {
+                // An entry placed against two TMDB shows keeps the lower of the two ids, so that
+                // what is written onto a show does not depend on the order the file was read in.
+                if (!tmdbByAnimeId.TryGetValue(claim.AnimeId, out var held) || NumericId(tmdbId) < NumericId(held))
+                {
+                    tmdbByAnimeId[claim.AnimeId] = tmdbId;
+                }
+            }
         }
+
+        var movieKeys = new Dictionary<AniDbAnimeListEpisode, List<string>>();
+        var moviesByAnimeId = new Dictionary<string, HashSet<AniDbAnimeListEpisode>>(StringComparer.Ordinal);
+
+        foreach (var (key, episode) in identifiedMovies)
+        {
+            if (!movieKeys.TryGetValue(episode, out var keys))
+            {
+                keys = [];
+                movieKeys[episode] = keys;
+            }
+
+            keys.Add(key);
+
+            if (!moviesByAnimeId.TryGetValue(episode.AnimeId, out var held))
+            {
+                held = [];
+                moviesByAnimeId[episode.AnimeId] = held;
+            }
+
+            held.Add(episode);
+        }
+
+        // Only the entries holding exactly one movie. An entry holding a trilogy is one AniDB id
+        // and three TMDB ids, and nothing but the episode says which of them a film is.
+        var soleMovieByAnimeId = moviesByAnimeId
+            .Where(pair => pair.Value.Count == 1)
+            .ToDictionary(pair => pair.Key, pair => pair.Value.First(), StringComparer.Ordinal);
 
         logger.LogInformation(
             "{Source}, last written on {WrittenAt} to schema {SchemaVersion}, place {EntryCount} AniDB entries across {SeriesCount} TVDB shows, identify {TmdbCount} TMDB shows and identify {MovieCount} movies",
@@ -481,7 +554,10 @@ internal sealed class AniBridgeIndex
             byAnimeId,
             bySeries.ToDictionary(pair => pair.Key, pair => (IReadOnlyList<AniBridgeEntry>)pair.Value, StringComparer.Ordinal),
             firstSeasonByTmdb,
-            identifiedMovies);
+            identifiedMovies,
+            tmdbByAnimeId,
+            movieKeys.ToDictionary(pair => pair.Key, pair => (IReadOnlyList<string>)pair.Value),
+            soleMovieByAnimeId);
     }
 
     private static string? ReadSchemaVersion(ref Utf8JsonReader reader)

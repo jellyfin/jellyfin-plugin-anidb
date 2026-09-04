@@ -324,6 +324,119 @@ internal static class AniDbMappings
     }
 
     /// <summary>
+    /// The ids other providers know a show by, as the mapping sources file it. What the image
+    /// providers of those sites, and fanart, are keyed by, so this is what lets them fetch
+    /// artwork for a show identified here.
+    /// </summary>
+    /// <param name="appPaths">Instance of the <see cref="IApplicationPaths"/> interface.</param>
+    /// <param name="animeId">The AniDB id of an entry of the show.</param>
+    /// <param name="logger">The logger of whichever provider is asking.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The ids, each of which may be absent.</returns>
+    public static async Task<MappedIds> ResolveShowIds(
+        IApplicationPaths appPaths,
+        string animeId,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        var tvdbId = await AniDbMappingOverrides.ResolveSeriesKey(appPaths, animeId, logger, cancellationToken).ConfigureAwait(false)
+            ?? await AniBridgeMappings.ResolveSeriesKey(appPaths, animeId, logger, cancellationToken).ConfigureAwait(false)
+            ?? await AniDbAnimeList.ResolveSeriesKey(appPaths, animeId, logger, cancellationToken).ConfigureAwait(false);
+
+        // Only the overrides and AniBridge carry TMDB show ids; the anime list has them for
+        // movies alone.
+        var tmdbId = await AniDbMappingOverrides.ResolveTmdbShow(appPaths, animeId, logger, cancellationToken).ConfigureAwait(false)
+            ?? await AniBridgeMappings.ResolveTmdbShow(appPaths, animeId, logger, cancellationToken).ConfigureAwait(false);
+
+        // A source keys a show the other site does not carry under a placeholder word rather
+        // than an id, and a placeholder written onto a show would send the other provider
+        // looking for a series that does not exist.
+        return new MappedIds(Numeric(tvdbId), Numeric(tmdbId), null);
+    }
+
+    /// <summary>
+    /// The ids other providers know a movie by, as the mapping sources file it. The sources are
+    /// asked in their own order and the first to identify the movie answers with every id it
+    /// holds for it, rather than each id being taken from whichever source has one: two sources
+    /// disagreeing about what a film is would otherwise be written onto it together.
+    /// </summary>
+    /// <param name="appPaths">Instance of the <see cref="IApplicationPaths"/> interface.</param>
+    /// <param name="animeId">The AniDB id of the entry holding the movie.</param>
+    /// <param name="episode">Which of its episodes the movie is, where that is known.</param>
+    /// <param name="logger">The logger of whichever provider is asking.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The ids, each of which may be absent.</returns>
+    public static async Task<MappedIds> ResolveMovieIds(
+        IApplicationPaths appPaths,
+        string animeId,
+        AniDbAnimeListEpisode? episode,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        Func<Task<IReadOnlyList<string>>>[] sources =
+        [
+            () => AniDbMappingOverrides.ResolveMovieKeys(appPaths, animeId, episode, logger, cancellationToken),
+            () => AniBridgeMappings.ResolveMovieKeys(appPaths, animeId, episode, logger, cancellationToken),
+            () => AniDbAnimeList.ResolveMovieKeys(appPaths, animeId, episode, logger, cancellationToken),
+        ];
+
+        foreach (var source in sources)
+        {
+            var keys = await source().ConfigureAwait(false);
+
+            if (keys.Count == 0)
+            {
+                continue;
+            }
+
+            string? tvdbId = null;
+            string? tmdbId = null;
+            string? imdbId = null;
+
+            foreach (var key in keys)
+            {
+                if (MovieKey.Split(key) is not { } parts)
+                {
+                    continue;
+                }
+
+                switch (parts.Provider)
+                {
+                    case "tvdb":
+                        tvdbId = parts.Id;
+                        break;
+
+                    case "tmdb":
+                        tmdbId = parts.Id;
+                        break;
+
+                    case "imdb":
+                        imdbId = parts.Id;
+                        break;
+                }
+            }
+
+            var found = new MappedIds(tvdbId, tmdbId, imdbId);
+
+            if (found.Any)
+            {
+                return found;
+            }
+        }
+
+        return MappedIds.None;
+    }
+
+    /// <summary>
+    /// An id as a provider would read it, which is nothing where a source wrote a placeholder
+    /// in place of one.
+    /// </summary>
+    /// <param name="id">The id as the source wrote it.</param>
+    /// <returns>The id, or <c>null</c> where it is not one.</returns>
+    private static string? Numeric(string? id)
+        => !string.IsNullOrEmpty(id) && id.All(char.IsAsciiDigit) ? id : null;
+
+    /// <summary>
     /// Notes a season the anime list places and AniBridge does not, for a show AniBridge places
     /// otherwise. One of the two is wrong about that show, and this is the only point at which
     /// a season is filled from a source other than the one that identified the show.

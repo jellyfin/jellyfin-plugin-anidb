@@ -146,6 +146,33 @@ internal sealed class AniDbAnimeListIndex
         => _byAnimeId.TryGetValue(animeId, out var entry) ? entry.SeriesKey : null;
 
     /// <summary>
+    /// Every key the list files a movie under, given the AniDB episode it is. Answers for an
+    /// entry whose episode is not known only where the entry holds a single movie: an entry
+    /// holding a trilogy is one AniDB id and three movie ids, and nothing but the episode says
+    /// which of them a film is.
+    /// </summary>
+    /// <param name="animeId">The AniDB id of the entry holding the movie.</param>
+    /// <param name="episode">Which of its episodes the movie is, where that is known.</param>
+    /// <returns>The keys, in no particular order, which is empty where the movie is not identified.</returns>
+    public IReadOnlyList<string> MovieKeysOf(string animeId, AniDbAnimeListEpisode? episode)
+    {
+        var held = _movies
+            .Where(pair => string.Equals(pair.Value.AnimeId, animeId, StringComparison.Ordinal))
+            .ToList();
+
+        if (held.Count == 0)
+        {
+            return [];
+        }
+
+        var wanted = episode ?? (held.DistinctBy(pair => pair.Value).Count() == 1 ? held[0].Value : null);
+
+        return wanted == null
+            ? []
+            : [.. held.Where(pair => pair.Value == wanted).Select(pair => pair.Key)];
+    }
+
+    /// <summary>
     /// The entry a show begins in, found from the TVDB id another provider has already settled
     /// on. The list keys its entries by TVDB id, so this identifies a show outright where
     /// matching on the name cannot: where AniDB spells the name differently, and where two

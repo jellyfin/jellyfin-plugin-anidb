@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
@@ -12,6 +13,7 @@ using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Providers;
+using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.AniDB.Providers.AniDB.Metadata;
 
@@ -29,7 +31,7 @@ public class AniDbImageProvider(IApplicationPaths appPaths) : IRemoteImageProvid
     /// <inheritdoc />
     public async Task<HttpResponseMessage> GetImageResponse(string url, CancellationToken cancellationToken)
     {
-        await AniDbSeriesProvider.WaitForRequestSlot(cancellationToken).ConfigureAwait(false);
+        await AniDbSeriesProvider.WaitForImageSlot(cancellationToken).ConfigureAwait(false);
         var httpClient = Plugin.Instance.GetHttpClient();
 
         return await httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
@@ -54,8 +56,24 @@ public class AniDbImageProvider(IApplicationPaths appPaths) : IRemoteImageProvid
 
         if (!string.IsNullOrEmpty(aniDbId))
         {
-            var seriesDataPath = await AniDbSeriesProvider.GetSeriesData(_appPaths, aniDbId, cancellationToken).ConfigureAwait(false);
-            var imageUrl = await FindImageUrl(seriesDataPath).ConfigureAwait(false);
+            string? imageUrl;
+
+            try
+            {
+                var seriesDataPath = await AniDbSeriesProvider.GetSeriesData(_appPaths, aniDbId, cancellationToken).ConfigureAwait(false);
+                imageUrl = await FindImageUrl(seriesDataPath).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is AniDbBannedException or IOException or XmlException or UnauthorizedAccessException)
+            {
+                // Nothing to offer rather than a failed refresh. The document is fetched again
+                // on the next one, and until then the item keeps whatever image it has.
+                AniDbSeriesProvider.Logger?.LogWarning(
+                    ex,
+                    "The cached document of AniDB anime {AnimeId} could not be read, so no image is offered for it",
+                    aniDbId);
+
+                return list;
+            }
 
             if (!string.IsNullOrEmpty(imageUrl))
             {

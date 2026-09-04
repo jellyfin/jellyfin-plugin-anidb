@@ -132,10 +132,18 @@ TMDB, IMDb or TVDB id needs an override only where those two are wrong about it 
 
 2. Build plugin with following command
   ```
-  dotnet publish --configuration Release --output bin
+  dotnet publish Jellyfin.Plugin.AniDB --configuration Release --output bin
   ```
 
 3. Place the dll-file in the `plugins/anidb` folder (you might need to create the folders) of your JF install
+
+## Tests
+
+The matching and parsing that has no server behind it is covered by unit tests.
+
+```
+dotnet test
+```
 
 ## Releasing
 

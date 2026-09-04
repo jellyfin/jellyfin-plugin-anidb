@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -482,8 +483,13 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     /// <param name="animeId">The AniDB id.</param>
     /// <param name="info">The series lookup info.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
+    /// <param name="publishShowIds">Whether the ids the mapping sources file the show under may be written onto the result. Off for a movie read out of a show's entry, which is not that show and must not carry the ids of its seasons.</param>
     /// <returns>The metadata result.</returns>
-    public async Task<MetadataResult<Series>> GetMetadataForId(string animeId, SeriesInfo info, CancellationToken cancellationToken)
+    public async Task<MetadataResult<Series>> GetMetadataForId(
+        string animeId,
+        SeriesInfo info,
+        CancellationToken cancellationToken,
+        bool publishShowIds = true)
     {
         var result = new MetadataResult<Series>
         {
@@ -493,10 +499,70 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
 
         result.Item.ProviderIds.Add(ProviderNames.AniDb, animeId);
 
+        if (publishShowIds)
+        {
+            await AddMappedShowIds(result.Item, info, animeId, cancellationToken).ConfigureAwait(false);
+        }
+
         var seriesDataPath = await GetSeriesData(_appPaths, animeId, cancellationToken).ConfigureAwait(false);
         await FetchSeriesInfo(result, seriesDataPath, info.MetadataLanguage ?? "en").ConfigureAwait(false);
 
         return result;
+    }
+
+    /// <summary>
+    /// Writes the TVDB and TMDB ids the mapping sources file a show under onto it, where that is
+    /// turned on. Those sites' image providers, and fanart, are keyed by them, so this is what
+    /// lets them fetch artwork for a show AniDB identified.
+    /// </summary>
+    /// <param name="series">The show being filled in.</param>
+    /// <param name="info">The lookup info, holding whatever ids the item already carries.</param>
+    /// <param name="animeId">The AniDB id of the show.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
+    private async Task AddMappedShowIds(Series series, SeriesInfo info, string animeId, CancellationToken cancellationToken)
+    {
+        if (!Plugin.Instance.Configuration.PublishMappedIds)
+        {
+            return;
+        }
+
+        var ids = await AniDbMappings.ResolveShowIds(
+            _appPaths,
+            animeId,
+            Logger ?? (ILogger)NullLogger.Instance,
+            cancellationToken).ConfigureAwait(false);
+
+        if (!ids.Any)
+        {
+            return;
+        }
+
+        AddMappedId(series, info.ProviderIds, nameof(MetadataProvider.Tvdb), ids.Tvdb);
+        AddMappedId(series, info.ProviderIds, nameof(MetadataProvider.Tmdb), ids.Tmdb);
+
+        Logger?.LogDebug(
+            "AniDB anime {AnimeId} is filed under TVDB {TvdbId} and TMDB {TmdbId}, which are written onto the show so that whatever is keyed by them can fetch its artwork",
+            animeId,
+            ids.Tvdb,
+            ids.Tmdb);
+    }
+
+    /// <summary>
+    /// Writes one mapped id onto an item, leaving alone an id the item already carries: that one
+    /// was either entered by hand or settled by the provider it belongs to, and either is better
+    /// evidence about the item than a mapping is.
+    /// </summary>
+    /// <param name="item">The item being filled in.</param>
+    /// <param name="known">The ids the item already carries.</param>
+    /// <param name="provider">The provider whose id this is.</param>
+    /// <param name="id">The id, where a source named one.</param>
+    internal static void AddMappedId(IHasProviderIds item, IReadOnlyDictionary<string, string> known, string provider, string? id)
+    {
+        if (!string.IsNullOrEmpty(id) && string.IsNullOrEmpty(known.GetValueOrDefault(provider)))
+        {
+            item.ProviderIds[provider] = id;
+        }
     }
 
     /// <inheritdoc />
@@ -574,7 +640,7 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     /// <inheritdoc />
     public async Task<HttpResponseMessage> GetImageResponse(string url, CancellationToken cancellationToken)
     {
-        await WaitForRequestSlot(cancellationToken).ConfigureAwait(false);
+        await WaitForImageSlot(cancellationToken).ConfigureAwait(false);
         var httpClient = Plugin.Instance.GetHttpClient();
 
         return await httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
@@ -677,9 +743,27 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     /// </summary>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
-    internal static async Task WaitForRequestSlot(CancellationToken cancellationToken)
+    internal static Task WaitForRequestSlot(CancellationToken cancellationToken)
+        => WaitForSlot(true, cancellationToken);
+
+    /// <summary>
+    /// Waits for the slot an image download takes. Images come from AniDB's image server rather
+    /// than from its API, which counts and bans separately, so a download waits its turn like
+    /// anything else but is not held back by a ban on the API. Otherwise a poster the API has
+    /// already described is lost for as long as the ban lasts, which is what leaves a show
+    /// identified during one without its artwork until someone picks it by hand.
+    /// </summary>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
+    internal static Task WaitForImageSlot(CancellationToken cancellationToken)
+        => WaitForSlot(false, cancellationToken);
+
+    private static async Task WaitForSlot(bool countsAgainstTheApi, CancellationToken cancellationToken)
     {
-        ThrowIfBanned();
+        if (countsAgainstTheApi)
+        {
+            ThrowIfBanned();
+        }
 
         Interlocked.Increment(ref _queuedRequests);
 
@@ -697,7 +781,10 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
                 }
 
                 // A caller ahead in the queue may have been banned while this one waited.
-                ThrowIfBanned();
+                if (countsAgainstTheApi)
+                {
+                    ThrowIfBanned();
+                }
 
                 _nextRequestTimestamp = Stopwatch.GetTimestamp() + GetRequestIntervalTicks();
 
@@ -1014,9 +1101,7 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
 
                         case "description":
                             var description = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
-                            description = description.TrimStart('*').Trim();
-                            series.Overview = ReplaceNewLine(StripAniDbLinks(
-                                Plugin.Instance.Configuration.AniDbReplaceGraves ? description.Replace('`', '\'') : description));
+                            series.Overview = AniDbDescription.Clean(description.TrimStart('*').Trim());
 
                             break;
 
@@ -1024,14 +1109,6 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
                             using (var subtree = reader.ReadSubtree())
                             {
                                 ParseRatings(series, subtree);
-                            }
-
-                            break;
-
-                        case "resources":
-                            using (var subtree = reader.ReadSubtree())
-                            {
-                                await ParseResources(series, subtree).ConfigureAwait(false);
                             }
 
                             break;
@@ -1051,42 +1128,12 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
                             }
 
                             break;
-
-                        case "episodes":
-                            using (var subtree = reader.ReadSubtree())
-                            {
-                                await ParseEpisodes(series, subtree).ConfigureAwait(false);
-                            }
-
-                            break;
                     }
                 }
             }
         }
 
         GenreHelper.CleanupGenres(series);
-    }
-
-    private static async Task ParseEpisodes(Series series, XmlReader reader)
-    {
-        while (await reader.ReadAsync().ConfigureAwait(false))
-        {
-            if (reader.NodeType == XmlNodeType.Element && reader.Name == "episode")
-            {
-                using var episodeSubtree = reader.ReadSubtree();
-                while (await episodeSubtree.ReadAsync().ConfigureAwait(false))
-                {
-                    if (episodeSubtree.NodeType == XmlNodeType.Element)
-                    {
-                        switch (episodeSubtree.Name)
-                        {
-                            case "epno":
-                                break;
-                        }
-                    }
-                }
-            }
-        }
     }
 
     private static bool IsIgnoredTag(int tagId)
@@ -1178,46 +1225,6 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
         return blacklist;
     }
 
-    private static async Task ParseResources(Series series, XmlReader reader)
-    {
-        while (await reader.ReadAsync().ConfigureAwait(false))
-        {
-            if (reader.NodeType == XmlNodeType.Element && reader.Name == "resource")
-            {
-                var type = reader.GetAttribute("type");
-                switch (type)
-                {
-                    case "4":
-                        while (await reader.ReadAsync().ConfigureAwait(false))
-                        {
-                            if (reader.NodeType == XmlNodeType.Element && reader.Name == "url")
-                            {
-                                await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
-                                break;
-                            }
-                        }
-
-                        break;
-                }
-            }
-        }
-    }
-
-    private static string StripAniDbLinks(string text)
-    {
-        return AniDbUrlRegex().Replace(text, "${name}");
-    }
-
-    /// <summary>
-    /// Replaces new lines with HTML line breaks.
-    /// </summary>
-    /// <param name="text">The text to transform.</param>
-    /// <returns>The transformed text.</returns>
-    public static string ReplaceNewLine(string text)
-    {
-        return text.Replace("\n", "<br>", StringComparison.Ordinal);
-    }
-
     private static async Task ParseActors(MetadataResult<Series> series, XmlReader reader)
     {
         while (await reader.ReadAsync().ConfigureAwait(false))
@@ -1235,10 +1242,11 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
 
     private static async Task ParseActor(MetadataResult<Series> series, XmlReader reader)
     {
-        string? name = null;
-        string? role = null;
-        string? picture = null;
-        string? personId = null;
+        string? actor = null;
+        string? actorPicture = null;
+        string? actorId = null;
+        string? character = null;
+        string? characterPicture = null;
 
         while (await reader.ReadAsync().ConfigureAwait(false))
         {
@@ -1247,32 +1255,65 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
                 switch (reader.Name)
                 {
                     case "name":
-                        role = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
+                        character = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
+                        break;
+
+                    case "picture":
+                        characterPicture = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
                         break;
 
                     case "seiyuu":
                         // Read before the content, which moves off the element these are on.
-                        picture = reader.GetAttribute("picture");
-                        personId = reader.GetAttribute("id");
-                        name = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
+                        actorPicture = reader.GetAttribute("picture");
+                        actorId = reader.GetAttribute("id");
+                        actor = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
                         break;
                 }
             }
         }
 
-        if (!string.IsNullOrEmpty(name) && !string.IsNullOrEmpty(role))
+        // Jellyfin holds one person per credit and has no kind of its own for a character, so the
+        // two swap places rather than both being listed: whichever is named takes the credit and
+        // the other becomes the role it is credited with.
+        var showCharacters = Plugin.Instance.Configuration.CastShowsCharacters;
+        var name = showCharacters ? character : actor;
+        var role = showCharacters ? actor : character;
+
+        // A credit needs someone to name. The usual listing names the actor and so needs both,
+        // an actor being worth listing only against the character they play; a character with no
+        // actor recorded is still a character, and is kept where those are what is listed.
+        if (string.IsNullOrEmpty(name) || (!showCharacters && string.IsNullOrEmpty(role)))
         {
-            series.AddPerson(CreatePerson(
-                Plugin.Instance.Configuration.AniDbReplaceGraves ? name.Replace('`', '\'') : name,
-                PersonKind.Actor,
-                role,
-                GetPersonImageUrl(picture),
-                personId));
+            return;
         }
+
+        // A character's AniDB id is not a creator's, and a person's id is written out as a link
+        // to a creator, so a character is listed without an id rather than with one pointing at
+        // whoever happens to hold that creator id.
+        series.AddPerson(CreatePerson(
+            ReplaceGraves(name),
+            PersonKind.Actor,
+            ReplaceGraves(role),
+            GetPersonImageUrl(showCharacters ? characterPicture : actorPicture),
+            showCharacters ? null : actorId));
     }
+
+    /// <summary>
+    /// Replaces the grave accents AniDB romanises a name with, where that is turned on.
+    /// </summary>
+    /// <param name="value">The name, where there is one.</param>
+    /// <returns>The name as it is listed.</returns>
+    [return: NotNullIfNotNull(nameof(value))]
+    private static string? ReplaceGraves(string? value)
+        => Plugin.Instance.Configuration.AniDbReplaceGraves ? value?.Replace('`', '\'') : value;
 
     private static void ParseRatings(Series series, XmlReader reader)
     {
+        if (!Plugin.Instance.Configuration.ImportCommunityRating)
+        {
+            return;
+        }
+
         while (reader.Read())
         {
             if (reader.NodeType == XmlNodeType.Element)
@@ -1343,7 +1384,7 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
                     var (kind, role) = GetCreatorRole(type);
 
                     series.AddPerson(CreatePerson(
-                       Plugin.Instance.Configuration.AniDbReplaceGraves ? name.Replace('`', '\'') : name,
+                       ReplaceGraves(name),
                        kind,
                        role,
                        null,
@@ -1854,9 +1895,6 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     {
         return Path.Combine(appPaths.CachePath, "anidb", "series", seriesId);
     }
-
-    [GeneratedRegex(@"https?://anidb.net/\w+(/[0-9]+)? \[(?<name>[^\]]*)\]")]
-    private static partial Regex AniDbUrlRegex();
 
     [GeneratedRegex(@"<error[^>]*>.*?</error>", RegexOptions.Singleline)]
     private static partial Regex ErrorRegex();
