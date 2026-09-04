@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -1218,10 +1219,11 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
 
     private static async Task ParseActor(MetadataResult<Series> series, XmlReader reader)
     {
-        string? name = null;
-        string? role = null;
-        string? picture = null;
-        string? personId = null;
+        string? actor = null;
+        string? actorPicture = null;
+        string? actorId = null;
+        string? character = null;
+        string? characterPicture = null;
 
         while (await reader.ReadAsync().ConfigureAwait(false))
         {
@@ -1230,29 +1232,57 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
                 switch (reader.Name)
                 {
                     case "name":
-                        role = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
+                        character = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
+                        break;
+
+                    case "picture":
+                        characterPicture = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
                         break;
 
                     case "seiyuu":
                         // Read before the content, which moves off the element these are on.
-                        picture = reader.GetAttribute("picture");
-                        personId = reader.GetAttribute("id");
-                        name = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
+                        actorPicture = reader.GetAttribute("picture");
+                        actorId = reader.GetAttribute("id");
+                        actor = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
                         break;
                 }
             }
         }
 
-        if (!string.IsNullOrEmpty(name) && !string.IsNullOrEmpty(role))
+        // Jellyfin holds one person per credit and has no kind of its own for a character, so the
+        // two swap places rather than both being listed: whichever is named takes the credit and
+        // the other becomes the role it is credited with.
+        var showCharacters = Plugin.Instance.Configuration.CastShowsCharacters;
+        var name = showCharacters ? character : actor;
+        var role = showCharacters ? actor : character;
+
+        // A credit needs someone to name. The usual listing names the actor and so needs both,
+        // an actor being worth listing only against the character they play; a character with no
+        // actor recorded is still a character, and is kept where those are what is listed.
+        if (string.IsNullOrEmpty(name) || (!showCharacters && string.IsNullOrEmpty(role)))
         {
-            series.AddPerson(CreatePerson(
-                Plugin.Instance.Configuration.AniDbReplaceGraves ? name.Replace('`', '\'') : name,
-                PersonKind.Actor,
-                role,
-                GetPersonImageUrl(picture),
-                personId));
+            return;
         }
+
+        // A character's AniDB id is not a creator's, and a person's id is written out as a link
+        // to a creator, so a character is listed without an id rather than with one pointing at
+        // whoever happens to hold that creator id.
+        series.AddPerson(CreatePerson(
+            ReplaceGraves(name),
+            PersonKind.Actor,
+            ReplaceGraves(role),
+            GetPersonImageUrl(showCharacters ? characterPicture : actorPicture),
+            showCharacters ? null : actorId));
     }
+
+    /// <summary>
+    /// Replaces the grave accents AniDB romanises a name with, where that is turned on.
+    /// </summary>
+    /// <param name="value">The name, where there is one.</param>
+    /// <returns>The name as it is listed.</returns>
+    [return: NotNullIfNotNull(nameof(value))]
+    private static string? ReplaceGraves(string? value)
+        => Plugin.Instance.Configuration.AniDbReplaceGraves ? value?.Replace('`', '\'') : value;
 
     private static void ParseRatings(Series series, XmlReader reader)
     {
@@ -1331,7 +1361,7 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
                     var (kind, role) = GetCreatorRole(type);
 
                     series.AddPerson(CreatePerson(
-                       Plugin.Instance.Configuration.AniDbReplaceGraves ? name.Replace('`', '\'') : name,
+                       ReplaceGraves(name),
                        kind,
                        role,
                        null,

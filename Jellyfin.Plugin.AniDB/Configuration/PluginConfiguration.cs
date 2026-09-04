@@ -75,6 +75,7 @@ public class PluginConfiguration : BasePluginConfiguration
         TagBlacklist = string.Empty;
         UseAniBridgeMappings = true;
         ImportCommunityRating = true;
+        CastShowsCharacters = false;
     }
 
     /// <summary>
@@ -108,6 +109,14 @@ public class PluginConfiguration : BasePluginConfiguration
     /// wanting none, has to turn this off rather than choose between them.
     /// </summary>
     public bool ImportCommunityRating { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the cast lists the characters rather than the
+    /// actors voicing them, each named after the character and credited with its actor. AniDB
+    /// records both, and Jellyfin has no kind of its own for a character, so it is one or the
+    /// other.
+    /// </summary>
+    public bool CastShowsCharacters { get; set; }
 
     public bool TidyGenreList { get; set; }
 

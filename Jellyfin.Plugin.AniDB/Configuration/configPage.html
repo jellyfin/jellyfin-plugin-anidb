@@ -117,6 +117,13 @@
                             </label>
                             <div class="fieldDescription">Uncheck to take no rating from AniDB, for a library that would rather have another provider's or none at all. Jellyfin holds one rating per item rather than one per provider, so this is a choice between them rather than a way of hiding one.</div>
                         </div>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="chkCastShowsCharacters" name="chkCastShowsCharacters" type="checkbox" is="emby-checkbox" />
+                                <span>List characters rather than voice actors</span>
+                            </label>
+                            <div class="fieldDescription">AniDB records both the characters and the actors voicing them, and Jellyfin has one credit for the two. Leave unchecked for the usual cast list, each actor credited with the character they play. Check to list the characters instead, each named after the character, pictured as the character and credited with its actor.</div>
+                        </div>
                         <div class="inputContainer">
                             <label class="inputeLabel inputLabelUnfocused" for="chkMaxGenres">Max Genres</label>
                             <input id="chkMaxGenres" name="chkMaxGenres" type="number" is="emby-input" min="0" />
@@ -335,6 +342,7 @@
                             document.getElementById('chkImportGenres').checked = config.ImportGenres;
                             document.getElementById('chkImportTags').checked = config.ImportTags;
                             document.getElementById('chkImportCommunityRating').checked = config.ImportCommunityRating;
+                            document.getElementById('chkCastShowsCharacters').checked = config.CastShowsCharacters;
                             document.getElementById('chkTitleSimilarityThreshold').value = config.TitleSimilarityThreshold;
                             document.getElementById('chkMaxGenres').value = config.MaxGenres;
                             document.getElementById('chkTitleCaseGenres').checked = config.TitleCaseGenres;
@@ -363,6 +371,7 @@
                             config.ImportGenres = document.getElementById('chkImportGenres').checked;
                             config.ImportTags = document.getElementById('chkImportTags').checked;
                             config.ImportCommunityRating = document.getElementById('chkImportCommunityRating').checked;
+                            config.CastShowsCharacters = document.getElementById('chkCastShowsCharacters').checked;
                             config.TitleSimilarityThreshold = document.getElementById('chkTitleSimilarityThreshold').value;
                             config.MaxGenres = document.getElementById('chkMaxGenres').value;
                             config.TitleCaseGenres = document.getElementById('chkTitleCaseGenres').checked;
