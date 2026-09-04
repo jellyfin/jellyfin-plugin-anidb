@@ -216,6 +216,46 @@ internal static class AniBridgeMappings
     }
 
     /// <summary>
+    /// The TMDB show an entry is placed against, where the mappings place it against one.
+    /// </summary>
+    /// <param name="appPaths">Instance of the <see cref="IApplicationPaths"/> interface.</param>
+    /// <param name="animeId">The AniDB id of an entry of the show.</param>
+    /// <param name="logger">The logger of whichever provider is asking.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The TMDB show id, or <c>null</c> where the mappings name none.</returns>
+    public static async Task<string?> ResolveTmdbShow(
+        IApplicationPaths appPaths,
+        string animeId,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        var index = await GetIndex(appPaths, logger, cancellationToken).ConfigureAwait(false);
+
+        return index?.TmdbShowOf(animeId);
+    }
+
+    /// <summary>
+    /// Every key the mappings file a movie under, given the AniDB entry and episode it is.
+    /// </summary>
+    /// <param name="appPaths">Instance of the <see cref="IApplicationPaths"/> interface.</param>
+    /// <param name="animeId">The AniDB id of the entry holding the movie.</param>
+    /// <param name="episode">Which of its episodes the movie is, where that is known.</param>
+    /// <param name="logger">The logger of whichever provider is asking.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The keys, which is empty where the mappings identify no such movie.</returns>
+    public static async Task<IReadOnlyList<string>> ResolveMovieKeys(
+        IApplicationPaths appPaths,
+        string animeId,
+        AniDbAnimeListEpisode? episode,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        var index = await GetIndex(appPaths, logger, cancellationToken).ConfigureAwait(false);
+
+        return index?.MovieKeysOf(animeId, episode) ?? [];
+    }
+
+    /// <summary>
     /// The entry a show begins in, given an entry of it that the mappings file as a later
     /// season.
     /// </summary>

@@ -483,8 +483,13 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     /// <param name="animeId">The AniDB id.</param>
     /// <param name="info">The series lookup info.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
+    /// <param name="publishShowIds">Whether the ids the mapping sources file the show under may be written onto the result. Off for a movie read out of a show's entry, which is not that show and must not carry the ids of its seasons.</param>
     /// <returns>The metadata result.</returns>
-    public async Task<MetadataResult<Series>> GetMetadataForId(string animeId, SeriesInfo info, CancellationToken cancellationToken)
+    public async Task<MetadataResult<Series>> GetMetadataForId(
+        string animeId,
+        SeriesInfo info,
+        CancellationToken cancellationToken,
+        bool publishShowIds = true)
     {
         var result = new MetadataResult<Series>
         {
@@ -494,10 +499,70 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
 
         result.Item.ProviderIds.Add(ProviderNames.AniDb, animeId);
 
+        if (publishShowIds)
+        {
+            await AddMappedShowIds(result.Item, info, animeId, cancellationToken).ConfigureAwait(false);
+        }
+
         var seriesDataPath = await GetSeriesData(_appPaths, animeId, cancellationToken).ConfigureAwait(false);
         await FetchSeriesInfo(result, seriesDataPath, info.MetadataLanguage ?? "en").ConfigureAwait(false);
 
         return result;
+    }
+
+    /// <summary>
+    /// Writes the TVDB and TMDB ids the mapping sources file a show under onto it, where that is
+    /// turned on. Those sites' image providers, and fanart, are keyed by them, so this is what
+    /// lets them fetch artwork for a show AniDB identified.
+    /// </summary>
+    /// <param name="series">The show being filled in.</param>
+    /// <param name="info">The lookup info, holding whatever ids the item already carries.</param>
+    /// <param name="animeId">The AniDB id of the show.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
+    private async Task AddMappedShowIds(Series series, SeriesInfo info, string animeId, CancellationToken cancellationToken)
+    {
+        if (!Plugin.Instance.Configuration.PublishMappedIds)
+        {
+            return;
+        }
+
+        var ids = await AniDbMappings.ResolveShowIds(
+            _appPaths,
+            animeId,
+            Logger ?? (ILogger)NullLogger.Instance,
+            cancellationToken).ConfigureAwait(false);
+
+        if (!ids.Any)
+        {
+            return;
+        }
+
+        AddMappedId(series, info.ProviderIds, nameof(MetadataProvider.Tvdb), ids.Tvdb);
+        AddMappedId(series, info.ProviderIds, nameof(MetadataProvider.Tmdb), ids.Tmdb);
+
+        Logger?.LogDebug(
+            "AniDB anime {AnimeId} is filed under TVDB {TvdbId} and TMDB {TmdbId}, which are written onto the show so that whatever is keyed by them can fetch its artwork",
+            animeId,
+            ids.Tvdb,
+            ids.Tmdb);
+    }
+
+    /// <summary>
+    /// Writes one mapped id onto an item, leaving alone an id the item already carries: that one
+    /// was either entered by hand or settled by the provider it belongs to, and either is better
+    /// evidence about the item than a mapping is.
+    /// </summary>
+    /// <param name="item">The item being filled in.</param>
+    /// <param name="known">The ids the item already carries.</param>
+    /// <param name="provider">The provider whose id this is.</param>
+    /// <param name="id">The id, where a source named one.</param>
+    internal static void AddMappedId(IHasProviderIds item, IReadOnlyDictionary<string, string> known, string provider, string? id)
+    {
+        if (!string.IsNullOrEmpty(id) && string.IsNullOrEmpty(known.GetValueOrDefault(provider)))
+        {
+            item.ProviderIds[provider] = id;
+        }
     }
 
     /// <inheritdoc />

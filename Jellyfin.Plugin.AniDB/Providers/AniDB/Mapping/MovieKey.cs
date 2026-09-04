@@ -53,6 +53,21 @@ internal static class MovieKey
     }
 
     /// <summary>
+    /// The provider and id a key is made of, which is what a key found by looking a movie up
+    /// has to be taken apart into before it can be written back onto one.
+    /// </summary>
+    /// <param name="key">The key, as the other methods here write one.</param>
+    /// <returns>The two parts, or <c>null</c> where the key is not one of these.</returns>
+    public static (string Provider, string Id)? Split(string key)
+    {
+        var separator = key.IndexOf(':', StringComparison.Ordinal);
+
+        return separator <= 0 || separator == key.Length - 1
+            ? null
+            : (key[..separator], key[(separator + 1)..]);
+    }
+
+    /// <summary>
     /// The key an AniBridge movie descriptor names, which is "&lt;provider&gt;_movie:&lt;id&gt;".
     /// </summary>
     /// <param name="descriptor">The descriptor as written.</param>

@@ -75,6 +75,7 @@ public class PluginConfiguration : BasePluginConfiguration
         TagBlacklist = string.Empty;
         UseAniBridgeMappings = true;
         ImportCommunityRating = true;
+        PublishMappedIds = false;
         CastShowsCharacters = false;
     }
 
@@ -109,6 +110,15 @@ public class PluginConfiguration : BasePluginConfiguration
     /// wanting none, has to turn this off rather than choose between them.
     /// </summary>
     public bool ImportCommunityRating { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the TVDB and TMDB ids the mapping sources file a
+    /// show under are written onto it. They are what the image providers of those sites, and
+    /// fanart, are keyed by, so filling them in is what lets those fetch artwork for a show this
+    /// plugin identified. Off by default: the id also arms the metadata providers of those sites
+    /// where they are enabled. An id already set is never replaced.
+    /// </summary>
+    public bool PublishMappedIds { get; set; }
 
     /// <summary>
     /// Gets or sets a value indicating whether the cast lists the characters rather than the
