@@ -1113,14 +1113,6 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
 
                             break;
 
-                        case "resources":
-                            using (var subtree = reader.ReadSubtree())
-                            {
-                                await ParseResources(series, subtree).ConfigureAwait(false);
-                            }
-
-                            break;
-
                         case "characters":
                             using (var subtree = reader.ReadSubtree())
                             {
@@ -1136,42 +1128,12 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
                             }
 
                             break;
-
-                        case "episodes":
-                            using (var subtree = reader.ReadSubtree())
-                            {
-                                await ParseEpisodes(series, subtree).ConfigureAwait(false);
-                            }
-
-                            break;
                     }
                 }
             }
         }
 
         GenreHelper.CleanupGenres(series);
-    }
-
-    private static async Task ParseEpisodes(Series series, XmlReader reader)
-    {
-        while (await reader.ReadAsync().ConfigureAwait(false))
-        {
-            if (reader.NodeType == XmlNodeType.Element && reader.Name == "episode")
-            {
-                using var episodeSubtree = reader.ReadSubtree();
-                while (await episodeSubtree.ReadAsync().ConfigureAwait(false))
-                {
-                    if (episodeSubtree.NodeType == XmlNodeType.Element)
-                    {
-                        switch (episodeSubtree.Name)
-                        {
-                            case "epno":
-                                break;
-                        }
-                    }
-                }
-            }
-        }
     }
 
     private static bool IsIgnoredTag(int tagId)
@@ -1261,31 +1223,6 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
         }
 
         return blacklist;
-    }
-
-    private static async Task ParseResources(Series series, XmlReader reader)
-    {
-        while (await reader.ReadAsync().ConfigureAwait(false))
-        {
-            if (reader.NodeType == XmlNodeType.Element && reader.Name == "resource")
-            {
-                var type = reader.GetAttribute("type");
-                switch (type)
-                {
-                    case "4":
-                        while (await reader.ReadAsync().ConfigureAwait(false))
-                        {
-                            if (reader.NodeType == XmlNodeType.Element && reader.Name == "url")
-                            {
-                                await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
-                                break;
-                            }
-                        }
-
-                        break;
-                }
-            }
-        }
     }
 
     private static async Task ParseActors(MetadataResult<Series> series, XmlReader reader)
