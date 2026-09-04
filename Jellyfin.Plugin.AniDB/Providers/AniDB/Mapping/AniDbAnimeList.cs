@@ -166,6 +166,27 @@ internal static class AniDbAnimeList
     }
 
     /// <summary>
+    /// Every key the list files a movie under, given the AniDB entry and episode it is.
+    /// </summary>
+    /// <param name="appPaths">Instance of the <see cref="IApplicationPaths"/> interface.</param>
+    /// <param name="animeId">The AniDB id of the entry holding the movie.</param>
+    /// <param name="episode">Which of its episodes the movie is, where that is known.</param>
+    /// <param name="logger">The logger of whichever provider is asking.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The keys, which is empty where the list identifies no such movie.</returns>
+    public static async Task<IReadOnlyList<string>> ResolveMovieKeys(
+        IApplicationPaths appPaths,
+        string animeId,
+        AniDbAnimeListEpisode? episode,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        var index = await _cache.GetIndex(appPaths, logger, cancellationToken).ConfigureAwait(false);
+
+        return index?.MovieKeysOf(animeId, episode) ?? [];
+    }
+
+    /// <summary>
     /// The entry a show begins in, given an entry of it that the list files as a later season.
     /// AniDB titles a second season "&lt;name&gt; (&lt;year&gt;)" as readily as it titles a
     /// remake that way, so a name match on a show whose seasons all aired in one year lands on

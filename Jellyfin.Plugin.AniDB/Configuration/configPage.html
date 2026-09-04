@@ -124,6 +124,13 @@
                             </label>
                             <div class="fieldDescription">AniDB records both the characters and the actors voicing them, and Jellyfin has one credit for the two. Leave unchecked for the usual cast list, each actor credited with the character they play. Check to list the characters instead, each named after the character, pictured as the character and credited with its actor.</div>
                         </div>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="chkPublishMappedIds" name="chkPublishMappedIds" type="checkbox" is="emby-checkbox" />
+                                <span>Fill in TVDB and TMDB ids</span>
+                            </label>
+                            <div class="fieldDescription">The mapping sources record which TVDB and TMDB entry each anime belongs to. Check to write those ids onto a show or film identified here, which is what lets the artwork providers keyed by them - TheTVDB, TMDB and fanart - fetch banners, backdrops and logos that AniDB does not carry. Off by default: on a server where those metadata providers are also enabled, an id fills them in as well. An id already set, by hand or by another provider, is never replaced.</div>
+                        </div>
                         <div class="inputContainer">
                             <label class="inputeLabel inputLabelUnfocused" for="chkMaxGenres">Max Genres</label>
                             <input id="chkMaxGenres" name="chkMaxGenres" type="number" is="emby-input" min="0" />
@@ -343,6 +350,7 @@
                             document.getElementById('chkImportTags').checked = config.ImportTags;
                             document.getElementById('chkImportCommunityRating').checked = config.ImportCommunityRating;
                             document.getElementById('chkCastShowsCharacters').checked = config.CastShowsCharacters;
+                            document.getElementById('chkPublishMappedIds').checked = config.PublishMappedIds;
                             document.getElementById('chkTitleSimilarityThreshold').value = config.TitleSimilarityThreshold;
                             document.getElementById('chkMaxGenres').value = config.MaxGenres;
                             document.getElementById('chkTitleCaseGenres').checked = config.TitleCaseGenres;
@@ -372,6 +380,7 @@
                             config.ImportTags = document.getElementById('chkImportTags').checked;
                             config.ImportCommunityRating = document.getElementById('chkImportCommunityRating').checked;
                             config.CastShowsCharacters = document.getElementById('chkCastShowsCharacters').checked;
+                            config.PublishMappedIds = document.getElementById('chkPublishMappedIds').checked;
                             config.TitleSimilarityThreshold = document.getElementById('chkTitleSimilarityThreshold').value;
                             config.MaxGenres = document.getElementById('chkMaxGenres').value;
                             config.TitleCaseGenres = document.getElementById('chkTitleCaseGenres').checked;

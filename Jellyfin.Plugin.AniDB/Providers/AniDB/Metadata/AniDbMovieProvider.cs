@@ -72,7 +72,9 @@ public class AniDbMovieProvider(IApplicationPaths appPaths, ILogger<AniDbMoviePr
 
         if (!string.IsNullOrEmpty(animeId))
         {
-            var seriesResult = await _seriesProvider.GetMetadataForId(animeId, seriesInfo, cancellationToken).ConfigureAwait(false);
+            // A movie is not the show whose entry may hold it, so the show's own TVDB and TMDB
+            // ids are not written onto it. Its own are added below.
+            var seriesResult = await _seriesProvider.GetMetadataForId(animeId, seriesInfo, cancellationToken, publishShowIds: false).ConfigureAwait(false);
 
             if (seriesResult.HasMetadata)
             {
@@ -96,6 +98,8 @@ public class AniDbMovieProvider(IApplicationPaths appPaths, ILogger<AniDbMoviePr
                     await ReadFromEpisode(movie, mapped, info.MetadataLanguage).ConfigureAwait(false);
                 }
 
+                await AddMappedMovieIds(movie, info, animeId, mapped?.Episode, cancellationToken).ConfigureAwait(false);
+
                 return new MetadataResult<Movie>
                 {
                     HasMetadata = true,
@@ -107,6 +111,48 @@ public class AniDbMovieProvider(IApplicationPaths appPaths, ILogger<AniDbMoviePr
         }
 
         return new MetadataResult<Movie>();
+    }
+
+    /// <summary>
+    /// Writes the ids the mapping sources file a film under onto it, where that is turned on.
+    /// Those sites' image providers are keyed by them, so this is what lets them fetch artwork
+    /// for a film AniDB identified.
+    /// </summary>
+    /// <param name="movie">The movie being filled in.</param>
+    /// <param name="info">The lookup info, holding whatever ids the item already carries.</param>
+    /// <param name="animeId">The AniDB id of the entry holding the film.</param>
+    /// <param name="episode">Which of its episodes the film is, where a source said so.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
+    private async Task AddMappedMovieIds(
+        Movie movie,
+        MovieInfo info,
+        string animeId,
+        AniDbAnimeListEpisode? episode,
+        CancellationToken cancellationToken)
+    {
+        if (!Plugin.Instance.Configuration.PublishMappedIds)
+        {
+            return;
+        }
+
+        var ids = await AniDbMappings.ResolveMovieIds(appPaths, animeId, episode, _logger, cancellationToken).ConfigureAwait(false);
+
+        if (!ids.Any)
+        {
+            return;
+        }
+
+        AniDbSeriesProvider.AddMappedId(movie, info.ProviderIds, nameof(MetadataProvider.Tvdb), ids.Tvdb);
+        AniDbSeriesProvider.AddMappedId(movie, info.ProviderIds, nameof(MetadataProvider.Tmdb), ids.Tmdb);
+        AniDbSeriesProvider.AddMappedId(movie, info.ProviderIds, nameof(MetadataProvider.Imdb), ids.Imdb);
+
+        _logger.LogDebug(
+            "{MovieName} is filed under TVDB {TvdbId}, TMDB {TmdbId} and IMDb {ImdbId}, which are written onto it so that whatever is keyed by them can fetch its artwork",
+            movie.Name,
+            ids.Tvdb,
+            ids.Tmdb,
+            ids.Imdb);
     }
 
     /// <inheritdoc />
