@@ -98,6 +98,14 @@
                         </div>
                         <div class="checkboxContainer checkboxContainer-withDescription">
                             <label class="emby-checkbox-label">
+                                <input id="chkEnableSimilarItems" name="chkEnableSimilarItems" type="checkbox" is="emby-checkbox" />
+                                <span>Suggest Similar Anime</span>
+                            </label>
+                            <div class="fieldDescription">AniDB's users vote on which anime are alike, and their votes come with the metadata already downloaded, so filling the More Like This row from them costs no request and cannot get your address banned. A show is asked about under every entry its seasons were filled from, and what comes back is matched against your library including the entries held as a season of some other show, which is how most sequels are filed. A show whose own list your library holds too little of is answered with the anime that list is itself held to be like.</div>
+                            <div class="fieldDescription"><strong>This does nothing until it is ranked.</strong> Jellyfin asks a library's similar item providers in the order set under Dashboard &rarr; Libraries &rarr; your library &rarr; Similar item providers, and stops as soon as it has enough. Tick AniDB there and drag it above Local Genre/Tag, which otherwise fills the row with random matches on genre before AniDB is ever reached.</div>
+                        </div>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
                                 <input id="chkImportGenres" name="chkImportGenres" type="checkbox" is="emby-checkbox" />
                                 <span>Import Genres</span>
                             </label>
@@ -325,6 +333,7 @@
                             document.getElementById('chkIgnoreSeason').checked = config.IgnoreSeason;
                             document.getElementById('chkUseAniBridgeMappings').checked = config.UseAniBridgeMappings;
                             document.getElementById('chkUseAniDbSeasonNames').checked = config.UseAniDbSeasonNames;
+                            document.getElementById('chkEnableSimilarItems').checked = config.EnableSimilarItems;
                             document.getElementById('chkImportGenres').checked = config.ImportGenres;
                             document.getElementById('chkImportTags').checked = config.ImportTags;
                             document.getElementById('chkTitleSimilarityThreshold').value = config.TitleSimilarityThreshold;
@@ -352,6 +361,7 @@
                             config.IgnoreSeason = document.getElementById('chkIgnoreSeason').checked;
                             config.UseAniBridgeMappings = document.getElementById('chkUseAniBridgeMappings').checked;
                             config.UseAniDbSeasonNames = document.getElementById('chkUseAniDbSeasonNames').checked;
+                            config.EnableSimilarItems = document.getElementById('chkEnableSimilarItems').checked;
                             config.ImportGenres = document.getElementById('chkImportGenres').checked;
                             config.ImportTags = document.getElementById('chkImportTags').checked;
                             config.TitleSimilarityThreshold = document.getElementById('chkTitleSimilarityThreshold').value;
