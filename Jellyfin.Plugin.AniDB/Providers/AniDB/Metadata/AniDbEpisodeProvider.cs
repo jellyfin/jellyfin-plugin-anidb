@@ -631,7 +631,8 @@ public partial class AniDbEpisodeProvider(IServerConfigurationManager configurat
                         break;
 
                     case "rating":
-                        if (int.TryParse(reader.GetAttribute("votes"), NumberStyles.Any, CultureInfo.InvariantCulture, out _))
+                        if (Plugin.Instance.Configuration.ImportCommunityRating
+                            && int.TryParse(reader.GetAttribute("votes"), NumberStyles.Any, CultureInfo.InvariantCulture, out _))
                         {
                             var ratingText = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
                             if (float.TryParse(ratingText, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var rating))
