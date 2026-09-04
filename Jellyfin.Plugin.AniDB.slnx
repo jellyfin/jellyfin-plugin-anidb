@@ -1,3 +1,4 @@
 <Solution>
+  <Project Path="Jellyfin.Plugin.AniDB.Tests/Jellyfin.Plugin.AniDB.Tests.csproj" />
   <Project Path="Jellyfin.Plugin.AniDB/Jellyfin.Plugin.AniDB.csproj" />
 </Solution>
