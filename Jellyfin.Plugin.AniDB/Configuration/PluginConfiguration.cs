@@ -74,6 +74,7 @@ public class PluginConfiguration : BasePluginConfiguration
         InfoboxTagsOnly = false;
         TagBlacklist = string.Empty;
         UseAniBridgeMappings = true;
+        EnableSimilarItems = true;
     }
 
     /// <summary>
@@ -133,6 +134,13 @@ public class PluginConfiguration : BasePluginConfiguration
     /// worth doing only where they place a show wrongly.
     /// </summary>
     public bool UseAniBridgeMappings { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the anime AniDB's users hold to be alike are
+    /// offered as similar items. The votes come with the metadata already downloaded, so this
+    /// costs no AniDB request of its own.
+    /// </summary>
+    public bool EnableSimilarItems { get; set; }
 
     /// <summary>
     /// Gets or sets the shortest gap, in milliseconds, between two AniDB requests. Clamped to
