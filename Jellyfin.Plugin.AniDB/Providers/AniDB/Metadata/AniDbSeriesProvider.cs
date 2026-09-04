@@ -1014,9 +1014,7 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
 
                         case "description":
                             var description = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
-                            description = description.TrimStart('*').Trim();
-                            series.Overview = ReplaceNewLine(StripAniDbLinks(
-                                Plugin.Instance.Configuration.AniDbReplaceGraves ? description.Replace('`', '\'') : description));
+                            series.Overview = AniDbDescription.Clean(description.TrimStart('*').Trim());
 
                             break;
 
@@ -1201,21 +1199,6 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
                 }
             }
         }
-    }
-
-    private static string StripAniDbLinks(string text)
-    {
-        return AniDbUrlRegex().Replace(text, "${name}");
-    }
-
-    /// <summary>
-    /// Replaces new lines with HTML line breaks.
-    /// </summary>
-    /// <param name="text">The text to transform.</param>
-    /// <returns>The transformed text.</returns>
-    public static string ReplaceNewLine(string text)
-    {
-        return text.Replace("\n", "<br>", StringComparison.Ordinal);
     }
 
     private static async Task ParseActors(MetadataResult<Series> series, XmlReader reader)
@@ -1854,9 +1837,6 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     {
         return Path.Combine(appPaths.CachePath, "anidb", "series", seriesId);
     }
-
-    [GeneratedRegex(@"https?://anidb.net/\w+(/[0-9]+)? \[(?<name>[^\]]*)\]")]
-    private static partial Regex AniDbUrlRegex();
 
     [GeneratedRegex(@"<error[^>]*>.*?</error>", RegexOptions.Singleline)]
     private static partial Regex ErrorRegex();

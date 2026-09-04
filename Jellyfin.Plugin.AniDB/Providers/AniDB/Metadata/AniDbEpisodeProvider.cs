@@ -656,8 +656,7 @@ public partial class AniDbEpisodeProvider(IServerConfigurationManager configurat
                         break;
 
                     case "summary":
-                        var overview = AniDbSeriesProvider.ReplaceNewLine(await reader.ReadElementContentAsStringAsync().ConfigureAwait(false));
-                        episode.Overview = Plugin.Instance.Configuration.AniDbReplaceGraves ? overview.Replace('`', '\'') : overview;
+                        episode.Overview = AniDbDescription.Clean(await reader.ReadElementContentAsStringAsync().ConfigureAwait(false));
 
                         break;
                 }
