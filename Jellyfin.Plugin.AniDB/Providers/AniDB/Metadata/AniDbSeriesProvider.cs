@@ -1257,6 +1257,11 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
 
     private static void ParseRatings(Series series, XmlReader reader)
     {
+        if (!Plugin.Instance.Configuration.ImportCommunityRating)
+        {
+            return;
+        }
+
         while (reader.Read())
         {
             if (reader.NodeType == XmlNodeType.Element)

@@ -110,6 +110,13 @@
                             </label>
                             <div class="fieldDescription">Uncheck to take no tags from AniDB. Independent of the genres above: a library can have AniDB's tags without its genres, or the other way round.</div>
                         </div>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="chkImportCommunityRating" name="chkImportCommunityRating" type="checkbox" is="emby-checkbox" />
+                                <span>Import Ratings</span>
+                            </label>
+                            <div class="fieldDescription">Uncheck to take no rating from AniDB, for a library that would rather have another provider's or none at all. Jellyfin holds one rating per item rather than one per provider, so this is a choice between them rather than a way of hiding one.</div>
+                        </div>
                         <div class="inputContainer">
                             <label class="inputeLabel inputLabelUnfocused" for="chkMaxGenres">Max Genres</label>
                             <input id="chkMaxGenres" name="chkMaxGenres" type="number" is="emby-input" min="0" />
@@ -327,6 +334,7 @@
                             document.getElementById('chkUseAniDbSeasonNames').checked = config.UseAniDbSeasonNames;
                             document.getElementById('chkImportGenres').checked = config.ImportGenres;
                             document.getElementById('chkImportTags').checked = config.ImportTags;
+                            document.getElementById('chkImportCommunityRating').checked = config.ImportCommunityRating;
                             document.getElementById('chkTitleSimilarityThreshold').value = config.TitleSimilarityThreshold;
                             document.getElementById('chkMaxGenres').value = config.MaxGenres;
                             document.getElementById('chkTitleCaseGenres').checked = config.TitleCaseGenres;
@@ -354,6 +362,7 @@
                             config.UseAniDbSeasonNames = document.getElementById('chkUseAniDbSeasonNames').checked;
                             config.ImportGenres = document.getElementById('chkImportGenres').checked;
                             config.ImportTags = document.getElementById('chkImportTags').checked;
+                            config.ImportCommunityRating = document.getElementById('chkImportCommunityRating').checked;
                             config.TitleSimilarityThreshold = document.getElementById('chkTitleSimilarityThreshold').value;
                             config.MaxGenres = document.getElementById('chkMaxGenres').value;
                             config.TitleCaseGenres = document.getElementById('chkTitleCaseGenres').checked;

@@ -74,6 +74,7 @@ public class PluginConfiguration : BasePluginConfiguration
         InfoboxTagsOnly = false;
         TagBlacklist = string.Empty;
         UseAniBridgeMappings = true;
+        ImportCommunityRating = true;
     }
 
     /// <summary>
@@ -100,6 +101,13 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <see cref="ImportGenres"/>.
     /// </summary>
     public bool ImportTags { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether AniDB's rating is kept. Jellyfin holds one rating
+    /// per item rather than one per provider, so a library taking ratings from somewhere else, or
+    /// wanting none, has to turn this off rather than choose between them.
+    /// </summary>
+    public bool ImportCommunityRating { get; set; }
 
     public bool TidyGenreList { get; set; }
 
