@@ -21,6 +21,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Nearly everything the mapping and placement logic is made of is internal, that being
+         the right visibility for it: none of it is part of the plugin's surface. The tests
+         exercise it directly rather than only through the providers, which would need a
+         running server to reach. -->
+    <InternalsVisibleTo Include="Jellyfin.Plugin.AniDB.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Remove="Configuration\configPage.html" />
     <EmbeddedResource Include="Configuration\configPage.html" />
   </ItemGroup>
