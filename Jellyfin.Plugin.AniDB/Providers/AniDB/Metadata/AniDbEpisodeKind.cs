@@ -22,5 +22,21 @@ internal enum AniDbEpisodeKind
     /// broadcast as a run of television episodes is recorded twice: as the entry's ordinary
     /// episodes, one per movie, and again here, one per broadcast episode.
     /// </summary>
-    Other
+    Other,
+
+    /// <summary>
+    /// A creditless opening or ending, numbered from C1. AniDB files both under the one
+    /// numbering, telling them apart by title alone.
+    /// </summary>
+    Credits,
+
+    /// <summary>
+    /// A trailer, promotion or advertisement, numbered from T1.
+    /// </summary>
+    Trailer,
+
+    /// <summary>
+    /// A parody, numbered from P1.
+    /// </summary>
+    Parody
 }
