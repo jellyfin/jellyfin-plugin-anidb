@@ -58,14 +58,14 @@ public partial class AniDbEpisodeProvider(IServerConfigurationManager configurat
         }
         catch (AniDbBannedException ex)
         {
-            _logger.LogWarning(
-                "Season {SeasonNumber} episode {EpisodeNumber} of AniDB series {SeriesId} could not be looked up because AniDB has banned this client. It stays without metadata until the ban lapses, in {RetryAfter}",
+            _logger.LogDebug(
+                "Season {SeasonNumber} episode {EpisodeNumber} of AniDB series {SeriesId} could not be looked up because AniDB has banned this client, for another {RetryAfter}",
                 info.ParentIndexNumber,
                 info.IndexNumber,
                 seriesId,
                 ex.RetryAfter);
 
-            return result;
+            throw;
         }
 
         if (xml == null || !xml.Exists)

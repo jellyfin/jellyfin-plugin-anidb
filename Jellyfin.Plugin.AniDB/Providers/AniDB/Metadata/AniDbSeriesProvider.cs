@@ -962,6 +962,7 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
                                 if (DateTime.TryParse(val, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out DateTime date))
                                 {
                                     series.PremiereDate = date;
+                                    series.ProductionYear = date.Year;
                                 }
                             }
 
