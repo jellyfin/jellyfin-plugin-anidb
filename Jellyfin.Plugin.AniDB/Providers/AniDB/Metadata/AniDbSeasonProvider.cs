@@ -59,13 +59,13 @@ public class AniDbSeasonProvider(IApplicationPaths appPaths, ILibraryManager lib
             }
             catch (AniDbBannedException ex)
             {
-                _logger.LogWarning(
-                    "Season {SeasonNumber} of AniDB series {SeriesId} could not be identified because AniDB has banned this client. It stays without metadata until the ban lapses, in {RetryAfter}, and the next refresh after that will fill it in",
+                _logger.LogDebug(
+                    "Season {SeasonNumber} of AniDB series {SeriesId} could not be identified because AniDB has banned this client, for another {RetryAfter}",
                     info.IndexNumber,
                     seriesId,
                     ex.RetryAfter);
 
-                return result;
+                throw;
             }
         }
 
@@ -114,6 +114,7 @@ public class AniDbSeasonProvider(IApplicationPaths appPaths, ILibraryManager lib
 
             result.Item.Overview = seriesResult.Item.Overview;
             result.Item.PremiereDate = seriesResult.Item.PremiereDate;
+            result.Item.ProductionYear = seriesResult.Item.ProductionYear;
             result.Item.EndDate = seriesResult.Item.EndDate;
             result.Item.CommunityRating = seriesResult.Item.CommunityRating;
             result.Item.Studios = seriesResult.Item.Studios;
