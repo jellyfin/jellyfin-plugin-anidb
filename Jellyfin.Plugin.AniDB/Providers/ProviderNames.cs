@@ -1,7 +1,6 @@
-﻿namespace Jellyfin.Plugin.AniDB.Providers
+namespace Jellyfin.Plugin.AniDB.Providers;
+
+public static class ProviderNames
 {
-    public class ProviderNames
-    {
-        public const string AniDb = "AniDB";
-    }
+    public const string AniDb = "AniDB";
 }

@@ -23,6 +23,7 @@ public class AniDbExternalUrlProvider : IExternalUrlProvider
             switch (item)
             {
                 case Series:
+                case Season:
                 case Movie:
                     yield return $"https://anidb.net/anime/{externalId}";
                     break;
