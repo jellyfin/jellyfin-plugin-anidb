@@ -18,109 +18,59 @@
 
 ## About
 
-This plugin adds the metadata provider for [aniDB](https://anidb.net/).
+This plugin makes [AniDB](https://anidb.net/) a metadata provider for anime in Jellyfin, for
+shows, movies and the people who made them.
 
-## Mapping overrides
+### What it provides
 
-The plugin works out which AniDB entry fills which season from two downloaded sources, the
-[AniBridge mappings](https://github.com/anibridge/anibridge-mappings) and the
-[Anime-Lists](https://github.com/Anime-Lists/anime-lists) anime list. Both describe AniDB as it
-is, so neither can describe a library that holds something AniDB does not list, or a show AniDB
-keeps inside another entry. Writing
+- Series, season, episode and movie metadata: titles in your choice of localized, Japanese or
+  romaji, descriptions, air dates, runtimes and AniDB's own ratings.
+- Genres and tags from AniDB's weighted tags, filtered by weight, by whether AniDB shows the tag
+  in the infobox, and by a blacklist of your own. Anime AniDB flags as adult are rated so
+  Jellyfin's parental controls act on them.
+- Cast and crew - voice actors with the characters they play, directors, composers and writers -
+  with the portraits AniDB holds for them.
+- Posters for series, seasons and movies.
+- Similar items, from the anime AniDB's own users hold to be alike, resolved against what your
+  library actually holds.
+- AniDB ids and links on series, seasons, episodes and people.
 
-```
-<jellyfin config>/plugins/configurations/anidb-mapping-overrides.json
-```
+### Where the mappings come from
 
-states such a thing outright. What it names is used as it stands, ahead of both sources; what it
-does not name is left to them. There is no setting to turn it on: the file being there is the
-setting, it is read again within five minutes of being changed, and the plugin page's **Status**
-section says where it goes, when it was last written and what has been read from it.
+AniDB registers every season, OVA and film as an entry of its own, where a library holds one show
+with numbered seasons. Bridging the two takes a mapping, and three sources are asked in order:
 
-The format is the AniBridge schema, so anything already written for those mappings can be pasted
-in. One key per AniDB entry, naming which of the entry's numberings it maps from, and under it
-one key per season, naming ranges of the entry against ranges of the season:
+1. Your own [mapping overrides](docs/mapping-overrides.md), if you wrote any. The last word on
+   whatever they name, and the only way to describe a library holding something AniDB does not
+   list, or a show AniDB keeps inside another entry.
+2. The [AniBridge mappings](https://github.com/anibridge/anibridge-mappings). They place more
+   AniDB entries than the anime list, state both sides of every placement outright, and carry
+   TMDB, TVDB and IMDb ids. Can be turned off in the settings.
+3. The [Anime-Lists](https://github.com/Anime-Lists/anime-lists) anime list, which answers what
+   AniBridge does not.
 
-```json
-{
-  "anidb:665:O": { "tvdb_show:70873:s3": { "1-13": "1-13" } },
-  "anidb:4521:S": { "tvdb_show:79093:s0": { "1-6": "1-6", "7-12": "8-13" } },
-  "anidb:7777:R": { "tvdb_show:441190:s4": { "1-12": "1-12" } }
-}
-```
+Both downloaded sources are cached, and refetched only when the publisher says the file has
+changed. AniDB itself supplies the rest: its daily titles dump for matching by name, and the
+sequel and prequel relations it records between entries.
 
-- `anidb:<id>:R` numbers the entry's ordinary episodes, `:S` its specials and `:O` its other
-  episodes. `tvdb_show:<id>:s<n>` is the season as your library numbers it, `s0` being the
-  specials. Ranges are `first-last` or a single number, the entry's on the left and the season's
-  on the right.
-- The first line above is a show AniDB holds as another entry's *other* episodes - Berserk's
-  Golden Age Arc Memorial Edition and Hellsing Ultimate Abridged are held that way. It both
-  identifies the show, there being no entry of its own to match by name, and fills its season.
-- The second is a specials season holding one special AniDB does not list, at position 7:
-  everything after it is one out of step, which without this costs the whole season its
-  numbering. Season specials named by no range - 7 here - are left to be matched by title and
-  air date, as any other unplaced special is.
-- The third corrects one season of a show the downloaded sources already place. The entry named
-  need not be the one the show is identified as; the TVDB id is what ties the two together.
+### How it works
 
-A season's side can also list several ranges, and can end with a ratio weighting its episodes
-against the entry's, both of which the AniBridge schema writes and this reads:
-
-- `"1-12": "1-6,8-13"` names two ranges: the entry's twelve episodes fill the season's 1-6 and
-  8-13, leaving its episode 7 to be matched some other way. The schema lists several ranges on
-  the season's side only.
-- `"13-": "14-|2"` weights them two to one: each episode of the entry is two of the season's, so
-  the entry's 13 is the season's 14 and 15, its 14 is the season's 16 and 17, and both halves of
-  each are described by the one AniDB episode holding them. That is a library numbering a
-  two-part episode as two where AniDB lists it as one.
-- `"1-4": "1-2|-2"` weights them the other way about, a negative ratio being that many of the
-  entry's episodes to one of the season's: the entry's 1 and 2 are the season's episode 1, its 3
-  and 4 the season's 2. The season's episode is described by the first of the pair, AniDB
-  recording two and a library holding them as one episode having one place to put them.
-
-The ratio belongs to the season's side, and its sign says which way round the weighting goes, so
-there is nothing to write on the entry's side: `"1-2": "1|-2"` is what `"1": "1-2|2"` would say
-backwards. A run with no end written is weighted out as far as any season could run and no
-further.
-
-Two things to know when writing one:
-
-- A placement is checked against AniDB, and dropped with a warning in the log if it reads past
-  the end of the entry it names. Only ordinary episodes can be checked that way: AniDB publishes
-  no count of an entry's specials or other episodes, so a range over those is taken at your word.
-- A season the file places is not measured against how many episodes your library holds under
-  it, which is what lets a deliberately partial placement stand. The episodes it leaves out get
-  no metadata rather than being placed some other way.
-
-### Movies
-
-A movie is named by its own id with whichever provider rather than by a season, since your library
-holds it as one item:
-
-```json
-{
-  "anidb:7:R": { "tmdb_movie:128": { "1": "1" }, "imdb_movie:tt0119698": { "1": "1" } },
-  "anidb:665:O": { "tmdb_movie:123456": { "3": "1" } }
-}
-```
-
-`tmdb_movie:`, `imdb_movie:` and `tvdb_movie:` are all read, and TVDB numbers its movies apart
-from its series. The left side is the episode of the entry the movie is; the right side is always
-`1`, a movie having nothing to number.
-
-- The first line is a movie AniDB registered in its own right - anime 7 is Princess Mononoke, and
-  those are its real ids - so the movie is that entry's episode 1 and is described by the entry's
-  own record.
-- The second is a movie AniDB holds inside an entry registered for something else, under whatever
-  id your own copy carries: Berserk's Memorial Edition, a theatrical cut listed among a series'
-  other episodes. There the movie takes its name, date and running time from **that episode**
-  rather than from the entry, so several such movies of one show no longer come out as several
-  copies of the same title. Cast, studios, genres and rating still come from the entry: AniDB
-  records none of those per episode.
-
-Movies are also identified from the downloaded sources now, with no file of your own - AniBridge
-maps 2,853 of them and the anime list 2,084 - so a movie another provider has already given a
-TMDB, IMDb or TVDB id needs an override only where those two are wrong about it or silent.
+- **Identifying.** A TMDB, IMDb or TVDB id another provider already settled on is looked up in
+  the mapping sources; with no id to go on, the name is matched against the titles dump.
+- **Placing seasons.** Each season is filled from the entries a mapping source places it in,
+  checked against the episodes AniDB records for them, so a season one source is wrong about is
+  still filled by the other. Where no source places it, AniDB's sequel relations are walked from
+  the series' own entry, allotting entries to seasons by the episode counts the library holds -
+  which is how a season split across two entries, or two seasons inside one, comes out right.
+  Unplaced specials are matched by title and air date.
+- **Fetching.** One document per AniDB entry carries its description, episodes, cast, tags and
+  similarity votes, so a whole season costs a single request.
+- **Staying unbanned.** AniDB bans a client that asks too often. Requests are queued and spaced
+  apart, documents are cached and reused rather than fetched per episode, refused ids are
+  remembered rather than asked about again, and a detected ban is waited out with a backoff that
+  survives a server restart. The spacing and the cache lifetime are settings, with floors the
+  plugin will not go below. The plugin page's **Status** section shows the ban state, the request
+  queue and how fresh each mapping source is.
 
 ## Installation
 
@@ -128,7 +78,7 @@ TMDB, IMDb or TVDB id needs an override only where those two are wrong about it 
 
 ## Build
 
-1. To build this plugin you will need [.Net 5.x](https://dotnet.microsoft.com/download/dotnet/5.0).
+1. To build this plugin you will need [.NET 10.x](https://dotnet.microsoft.com/download/dotnet/10.0).
 
 2. Build plugin with following command
   ```
