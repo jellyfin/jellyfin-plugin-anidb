@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -28,6 +29,36 @@ internal static partial class Equals_check
     private const int FallbackSearchResults = 3;
 
     /// <summary>
+    /// The spellings one romanisation of a name differs from another by, and the pattern each
+    /// becomes. Longest first: the list is walked in order and the first that fits is taken, so
+    /// "and" has to be offered before the "n" inside it.
+    /// </summary>
+    private static readonly (string Spelling, string Pattern)[] _equivalences =
+    [
+        ("gekijyouban", "gekij[y]?ouban"),
+        ("gekijouban", "gekij[y]?ouban"),
+        ("mahoutsukai", "mahou ?tsukai"),
+        ("to aru", "to ?aru"),
+        ("and", "(?:&|and)"),
+        ("ova", "(?:ova|oad)"),
+        ("oad", "(?:ova|oad)"),
+        ("wo", "w?o"),
+        ("re", "re.?"),
+        ("&", "(?:&|and)"),
+        ("c", "[ck]"),
+        ("k", "[ck]"),
+        ("n", "n`?"),
+    ];
+
+    /// <summary>
+    /// The characters a name is allowed to differ from a title by. Punctuation is the first
+    /// thing a romanisation changes, and the two spellings of a name are otherwise the same
+    /// name, so each of these matches any one character or none.
+    /// </summary>
+    private static readonly SearchValues<char> _fuzzyCharacters =
+        SearchValues.Create(@"\*+?|{}[]()^$.#!,–—_=~'`‚‘’„“”:;␣@<>/-");
+
+    /// <summary>
     /// Cut p(%) away from the string.
     /// </summary>
     /// <param name="input">The string to shorten.</param>
@@ -52,53 +83,93 @@ internal static partial class Equals_check
     }
 
     /// <summary>
-    /// Escape string for regex, but fuzzy.
+    /// Builds a pattern that matches a name however it was romanised: loosely about punctuation,
+    /// and treating as equal the spellings that romanisation differs by, such as c and k, OVA and
+    /// OAD, and an ampersand written out as a word.
     /// </summary>
-    /// <param name="a">The string to escape.</param>
-    /// <returns>The fuzzy regex pattern.</returns>
+    /// <remarks>
+    /// Written in one pass over the name rather than as a run of replacements over the pattern
+    /// so far, which is what it used to be. Each replacement there saw what the ones before it
+    /// had written: "OVA" came out as "((OVA)|(((OVA)|(OAD))))" because the OAD rule rewrote the
+    /// OAD the OVA rule had just put there, and the rule pairing "and" with an ampersand never
+    /// fired at all, the rule before it having already turned every n into "n`?".
+    /// </remarks>
+    /// <param name="a">The name to build a pattern from.</param>
+    /// <returns>The fuzzy regex pattern, which is matched without regard to case.</returns>
     public static string FuzzyRegexEscape(string a)
     {
-        a = Regex.Escape(a);
+        var pattern = new StringBuilder(a.Length * 4);
+        var index = 0;
 
-        // Make the escaped characters fuzzy.
-        a = a.Replace(@"\\", ".?", StringComparison.Ordinal);
-        a = a.Replace(@"\*", ".?", StringComparison.Ordinal);
-        a = a.Replace(@"\+", ".?", StringComparison.Ordinal);
-        a = a.Replace(@"\?", ".?", StringComparison.Ordinal);
-        a = a.Replace(@"\|", ".?", StringComparison.Ordinal);
-        a = a.Replace(@"\{", ".?", StringComparison.Ordinal);
-        a = a.Replace(@"\[", ".?", StringComparison.Ordinal);
-        a = a.Replace(@"\(", ".?", StringComparison.Ordinal);
-        a = a.Replace(@"\)", ".?", StringComparison.Ordinal);
-        a = a.Replace(@"\^", ".?", StringComparison.Ordinal);
-        a = a.Replace(@"\$", ".?", StringComparison.Ordinal);
-        a = a.Replace(@"\.", ".?", StringComparison.Ordinal);
-        a = a.Replace(@"\#", ".?", StringComparison.Ordinal);
+        while (index < a.Length)
+        {
+            var equivalent = MatchEquivalence(a, index);
 
-        // Whitespace.
-        a = a.Replace(@"\ ", ".?.?.?", StringComparison.Ordinal);
-        a = WhitespaceRegex().Replace(a, ".?.?.?");
+            if (equivalent != null)
+            {
+                pattern.Append(equivalent.Value.Pattern);
+                index += equivalent.Value.Spelling.Length;
 
-        // Other characters.
-        a = SpecialCharacterRegex().Replace(a, ".?");
+                continue;
+            }
 
-        // Words.
-        a = SAtEndBoundaryRegex().Replace(a, ".?s");
-        a = a.Replace("Gekijyouban", "Gekijouban", StringComparison.OrdinalIgnoreCase);
-        a = a.Replace("Mahoutsukai", "Mahou ?tsukai", StringComparison.OrdinalIgnoreCase);
-        a = a.Replace("to aru", "to ?aru", StringComparison.OrdinalIgnoreCase);
-        a = a.Replace("re", "re.?", StringComparison.OrdinalIgnoreCase);
-        a = a.Replace("OVA", "((OVA)|(OAD))", StringComparison.OrdinalIgnoreCase);
-        a = a.Replace("OAD", "((OVA)|(OAD))", StringComparison.OrdinalIgnoreCase);
-        a = a.Replace("wo", "w?o", StringComparison.OrdinalIgnoreCase);
-        a = a.Replace("c", "(c|k)", StringComparison.OrdinalIgnoreCase);
-        a = a.Replace("k", "(c|k)", StringComparison.OrdinalIgnoreCase);
-        a = a.Replace("n", "n`?", StringComparison.OrdinalIgnoreCase);
-        a = a.Replace("&", "(&|(and))", StringComparison.OrdinalIgnoreCase);
-        a = a.Replace("and", "(&|(and))", StringComparison.OrdinalIgnoreCase);
+            var character = a[index++];
 
-        return a;
+            if (char.IsWhiteSpace(character))
+            {
+                // A space is where a romanisation is likeliest to disagree, joining two words
+                // one way and hyphenating them another.
+                pattern.Append(".?.?.?");
+            }
+            else if (_fuzzyCharacters.Contains(character))
+            {
+                pattern.Append(".?");
+            }
+            else if ((character is 's' or 'S') && IsWordEnd(a, index))
+            {
+                // A trailing s is often what is left of a syllable another romanisation writes
+                // out, as in "Bleach: Sennen Kessen-hen" against "...Kessenhen s".
+                pattern.Append(".?s");
+            }
+            else
+            {
+                pattern.Append(Regex.Escape(character.ToString()));
+            }
+        }
+
+        return pattern.ToString();
     }
+
+    /// <summary>
+    /// The equivalence the name carries at the given position, longest first.
+    /// </summary>
+    /// <param name="name">The name being read.</param>
+    /// <param name="index">Where in it to look.</param>
+    /// <returns>The equivalence, or <c>null</c> where the name carries none there.</returns>
+    private static (string Spelling, string Pattern)? MatchEquivalence(string name, int index)
+    {
+        foreach (var equivalence in _equivalences)
+        {
+            if (index + equivalence.Spelling.Length <= name.Length
+                && name.AsSpan(index, equivalence.Spelling.Length)
+                    .Equals(equivalence.Spelling, StringComparison.OrdinalIgnoreCase))
+            {
+                return equivalence;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Whether a word ends at the given position, that being the end of the name or anything
+    /// that is not part of a word.
+    /// </summary>
+    /// <param name="name">The name being read.</param>
+    /// <param name="index">The position just past the character being considered.</param>
+    /// <returns>Whether the word ends there.</returns>
+    private static bool IsWordEnd(string name, int index)
+        => index >= name.Length || (!char.IsLetterOrDigit(name[index]) && name[index] != '_');
 
     /// <summary>
     /// Searches for possible AniDB IDs for name, closest spelling first.
@@ -492,15 +563,6 @@ internal static partial class Equals_check
     {
         return AniDbTitleDownloader.StaticTitlesFilePath;
     }
-
-    [GeneratedRegex(@"\s")]
-    private static partial Regex WhitespaceRegex();
-
-    [GeneratedRegex(@"[!,–—_=~'`‚‘’„“”:;␣#@<>}\]\/\-]")]
-    private static partial Regex SpecialCharacterRegex();
-
-    [GeneratedRegex(@"s\b")]
-    private static partial Regex SAtEndBoundaryRegex();
 
     [GeneratedRegex(@"<title[^>]*>([^<]+)</title>")]
     private static partial Regex TitleRegex();

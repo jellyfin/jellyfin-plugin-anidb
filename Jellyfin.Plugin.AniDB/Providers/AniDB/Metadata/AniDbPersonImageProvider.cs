@@ -55,7 +55,7 @@ public class AniDbPersonImageProvider(IApplicationPaths paths) : IRemoteImagePro
     /// <inheritdoc />
     public async Task<HttpResponseMessage> GetImageResponse(string url, CancellationToken cancellationToken)
     {
-        await AniDbSeriesProvider.WaitForRequestSlot(cancellationToken).ConfigureAwait(false);
+        await AniDbSeriesProvider.WaitForImageSlot(cancellationToken).ConfigureAwait(false);
         var httpClient = Plugin.Instance.GetHttpClient();
 
         return await httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);

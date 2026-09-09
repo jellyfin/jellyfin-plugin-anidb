@@ -180,6 +180,65 @@ internal static class AniDbMappingOverrides
     }
 
     /// <summary>
+    /// The show an entry is filed under, as the TVDB id its seasons are numbered against.
+    /// </summary>
+    /// <param name="appPaths">Instance of the <see cref="IApplicationPaths"/> interface.</param>
+    /// <param name="animeId">The AniDB id of an entry of the show.</param>
+    /// <param name="logger">The logger of whichever provider is asking.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The TVDB id, or <c>null</c> where the file does not place the entry.</returns>
+    public static async Task<string?> ResolveSeriesKey(
+        IApplicationPaths appPaths,
+        string animeId,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        var index = await _cache.GetIndex(appPaths, logger, cancellationToken).ConfigureAwait(false);
+
+        return index?.SeriesKeyOf(animeId);
+    }
+
+    /// <summary>
+    /// The TMDB show an entry is placed against, where the file places it against one.
+    /// </summary>
+    /// <param name="appPaths">Instance of the <see cref="IApplicationPaths"/> interface.</param>
+    /// <param name="animeId">The AniDB id of an entry of the show.</param>
+    /// <param name="logger">The logger of whichever provider is asking.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The TMDB show id, or <c>null</c> where the file names none.</returns>
+    public static async Task<string?> ResolveTmdbShow(
+        IApplicationPaths appPaths,
+        string animeId,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        var index = await _cache.GetIndex(appPaths, logger, cancellationToken).ConfigureAwait(false);
+
+        return index?.TmdbShowOf(animeId);
+    }
+
+    /// <summary>
+    /// Every key the file identifies a movie under, given the AniDB entry and episode it is.
+    /// </summary>
+    /// <param name="appPaths">Instance of the <see cref="IApplicationPaths"/> interface.</param>
+    /// <param name="animeId">The AniDB id of the entry holding the movie.</param>
+    /// <param name="episode">Which of its episodes the movie is, where that is known.</param>
+    /// <param name="logger">The logger of whichever provider is asking.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The keys, which is empty where the file identifies no such movie.</returns>
+    public static async Task<IReadOnlyList<string>> ResolveMovieKeys(
+        IApplicationPaths appPaths,
+        string animeId,
+        AniDbAnimeListEpisode? episode,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        var index = await _cache.GetIndex(appPaths, logger, cancellationToken).ConfigureAwait(false);
+
+        return index?.MovieKeysOf(animeId, episode) ?? [];
+    }
+
+    /// <summary>
     /// The entry a show begins in, given an entry of it the file places as a later season.
     /// </summary>
     /// <param name="appPaths">Instance of the <see cref="IApplicationPaths"/> interface.</param>
