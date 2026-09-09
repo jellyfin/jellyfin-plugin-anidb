@@ -1,7 +1,7 @@
 name: "AniDB"
 guid: "a2b2a7ed-aa28-4521-a64a-63d86901f246"
 imageUrl: https://repo.jellyfin.org/releases/plugin/images/jellyfin-plugin-anidb.png
-version: 12
+version: 13
 targetAbi: "12.0.0.0"
 framework: "net10.0"
 owner: "jellyfin"
@@ -13,14 +13,6 @@ category: "Anime"
 artifacts:
   - "Jellyfin.Plugin.AniDB.dll"
 changelog: |-
-  - Unstable: Update to latest Jellyfin preview packages (#99) @crobibero, @jellyfin-bot, @Shadowghost
-  - Add Analyzers, migrate to file-scoped namespaces and cleanup code (#105) @Shadowghost, @crobibero
-  - Only show defined person images (#103) @enter-a-random-username, @Shadowghost
-  - Get correct attribute for ratings (#104) @enter-a-random-username, @Shadowghost
-  - Add external link for person (#102) @enter-a-random-username, @Shadowghost
-  - fix: download if the file has zero length (#91) @trajano
-  - Upgrade Microsoft.Extensions.Http to 9.0.11 (#86) @Shadowghost
-  - Revert "Update dependency Microsoft.Extensions.Http to v10" (#83) @Shadowghost
-
-  ### Dependency updates ###
-  - Update dependency Microsoft.Extensions.Http to v10 (#73) [@renovate[bot]](https://github.com/apps/renovate)
+  - Close out six open issues across metadata, matching and artwork (#108) @Shadowghost, @crobibero
+  - Implement similarity providers and update README (#107) @Shadowghost, @crobibero
+  - Set the production year on a series, and fail rather than blank an item while banned (#109) @Shadowghost, @crobibero
