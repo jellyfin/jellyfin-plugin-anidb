@@ -5,8 +5,8 @@
 <img alt="Plugin Banner" src="https://raw.githubusercontent.com/jellyfin/jellyfin-ux/master/plugins/SVG/jellyfin-plugin-anidb.svg?sanitize=true"/>
 <br/>
 <br/>
-<a href="https://github.com/jellyfin/jellyfin-plugin-anidb/actions?query=workflow%3A%22Test+Build+Plugin%22">
-<img alt="GitHub Workflow Status" src="https://img.shields.io/github/workflow/status/jellyfin/jellyfin-plugin-anidb/Test%20Build%20Plugin.svg">
+<a href="https://github.com/jellyfin/jellyfin-plugin-anidb/actions/workflows/test.yaml">
+<img alt="GitHub Workflow Status" src="https://img.shields.io/github/actions/workflow/status/jellyfin/jellyfin-plugin-anidb/build.yaml?branch=master">
 </a>
 <a href="https://github.com/jellyfin/jellyfin-plugin-anidb/blob/master/LICENSE">
 <img alt="GPLv2 License" src="https://img.shields.io/github/license/jellyfin/jellyfin-plugin-anidb.svg"/>
