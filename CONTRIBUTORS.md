@@ -14,3 +14,4 @@
  - [DaniGTA](https://github.com/DaniGTA)
  - [mtlott](https://github.com/mtlott)
  - [mcd1992](https://github.com/mcd1992)
+ - [diginatrium](https://github.com/diginatrium)

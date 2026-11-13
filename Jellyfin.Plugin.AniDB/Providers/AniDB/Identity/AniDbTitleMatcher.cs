@@ -192,6 +192,7 @@ public sealed class AniDbTitleMatcher(ILogger<AniDbTitleMatcher> logger, IAniDbT
 
         var settings = new XmlReaderSettings
         {
+            Async = true,
             CheckCharacters = false,
             IgnoreProcessingInstructions = true,
             IgnoreComments = true,
