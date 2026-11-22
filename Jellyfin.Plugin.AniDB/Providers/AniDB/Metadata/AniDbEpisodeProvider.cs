@@ -116,7 +116,8 @@ public partial class AniDbEpisodeProvider(IServerConfigurationManager configurat
 
         if (xml == null || !xml.Exists)
         {
-            _logger.LogWarning(
+            _logger.Log(
+                info.IsMissingEpisode ? LogLevel.Debug : LogLevel.Warning,
                 "Season {SeasonNumber} episode {EpisodeNumber} of AniDB series {SeriesId} has no counterpart in anime {AnimeId}, where it would be episode {EpisodeNumberInEntry}, and stays without metadata",
                 info.ParentIndexNumber,
                 info.IndexNumber,
@@ -217,7 +218,8 @@ public partial class AniDbEpisodeProvider(IServerConfigurationManager configurat
 
         if (specials.Count == 0)
         {
-            _logger.LogWarning(
+            _logger.Log(
+                info.IsMissingEpisode ? LogLevel.Debug : LogLevel.Warning,
                 "None of the {EntryCount} AniDB entries of series {SeriesId} has any special, creditless opening, trailer or parody, so special {EpisodeNumber} stays without metadata",
                 chain.Count,
                 seriesId,
@@ -246,7 +248,8 @@ public partial class AniDbEpisodeProvider(IServerConfigurationManager configurat
 
         if (match == null)
         {
-            _logger.LogWarning(
+            _logger.Log(
+                info.IsMissingEpisode ? LogLevel.Debug : LogLevel.Warning,
                 "Special {EpisodeNumber} of AniDB series {SeriesId} matches none of the {SpecialCount} specials, creditless openings, trailers and parodies across its {EntryCount} AniDB entries by id, title or air date, so it stays without metadata. The library has {LibraryCount} specials, which line up with neither the whole of that list nor any single entry of it, so they cannot be numbered straight through. Set its AniDB id by hand to fill it in",
                 info.IndexNumber,
                 seriesId,
