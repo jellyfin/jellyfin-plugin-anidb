@@ -11,6 +11,7 @@
          rather than being loaded by one. `dotnet test` is pointed at that runner by the
          global.json beside the solution. -->
     <OutputType>Exe</OutputType>
+    <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
 
     <!-- The plugin turns every analyser on and treats warnings as errors. The tests are held
          to the compiler's own rules, but not to the documentation and naming rules meant for
@@ -20,6 +21,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Moq" Version="4.21.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
     <PackageReference Include="xunit.v3" Version="4.0.0" />
     <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0" />
